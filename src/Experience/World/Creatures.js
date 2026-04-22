@@ -279,6 +279,8 @@ export class Creatures {
       c.animPhase += dt * (c.state === 'chase' ? 8 : 4)
       const legAnim = Math.sin(c.animPhase) * 0.3
 
+      // Creatures are PURELY VISUAL — they never block or affect the car.
+      // They can overlap with the car freely.
       if (!playerPos || this.disabled) {
         this._wander(c, dt)
       } else {
@@ -286,23 +288,7 @@ export class Creatures {
         const dz = playerPos.z - c.z
         const dist = Math.sqrt(dx * dx + dz * dz)
 
-        // Creatures must NEVER touch the car — scale keep-away by creature size
-        const keepAwayDist = Math.max(12, c.size * 1.5)
-        if (dist < keepAwayDist) {
-          // Hard push — instant, not scaled by dt, so they can't creep in
-          const pushX = -dx / (dist || 1)
-          const pushZ = -dz / (dist || 1)
-          const pushStrength = (keepAwayDist - dist) * 2
-          c.x += pushX * pushStrength
-          c.z += pushZ * pushStrength
-          // Scatter away
-          c.state = 'wander'
-          c.wanderTarget = {
-            x: c.x + pushX * 30 + (Math.random() - 0.5) * 10,
-            z: c.z + pushZ * 30 + (Math.random() - 0.5) * 10,
-          }
-          c.wanderTimer = 240
-        } else if (c.state === 'wander' && dist < c.chaseRange) {
+        if (c.state === 'wander' && dist < c.chaseRange) {
           c.state = 'chase'
         } else if (c.state === 'chase' && dist > c.giveUpRange) {
           c.state = 'wander'
@@ -314,22 +300,13 @@ export class Creatures {
         }
 
         if (c.state === 'chase') {
-          // Chase but orbit at keepAwayDist — never close the last gap
-          if (dist > keepAwayDist + 2) {
-            const targetAngle = Math.atan2(dx, dz)
-            let angleDiff = targetAngle - c.angle
-            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2
-            while (angleDiff < -Math.PI) angleDiff += Math.PI * 2
-            c.angle += angleDiff * dt * 5
-
-            c.x += Math.sin(c.angle) * c.chaseSpeed * dt
-            c.z += Math.cos(c.angle) * c.chaseSpeed * dt
-          } else {
-            // Close enough — orbit around the car instead of charging in
-            c.angle += dt * 2
-            c.x += Math.sin(c.angle) * c.wanderSpeed * dt
-            c.z += Math.cos(c.angle) * c.wanderSpeed * dt
-          }
+          const targetAngle = Math.atan2(dx, dz)
+          let angleDiff = targetAngle - c.angle
+          while (angleDiff > Math.PI) angleDiff -= Math.PI * 2
+          while (angleDiff < -Math.PI) angleDiff += Math.PI * 2
+          c.angle += angleDiff * dt * 5
+          c.x += Math.sin(c.angle) * c.chaseSpeed * dt
+          c.z += Math.cos(c.angle) * c.chaseSpeed * dt
         } else {
           this._wander(c, dt)
         }

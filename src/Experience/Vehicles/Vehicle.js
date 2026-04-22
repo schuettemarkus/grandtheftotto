@@ -477,43 +477,27 @@ export class Vehicle {
     }
   }
 
-  /**
-   * Calculate the correct Y position so wheels rest on the ground plane (y=0).
-   * Formula: body_y = |wheel_connection_y| + suspensionRestLength + wheelRadius
-   */
-  _groundY() {
-    const w = this.def.wheels
-    return Math.abs(w.front.y) + w.suspension.restLength + w.radius + 0.05
-  }
-
-  resetPosition(x, y, z) {
-    // Use provided y or calculate ground-level y
-    const safeY = Math.max(y, this._groundY())
-    this.chassisBody.position.set(x, safeY, z)
-    this.chassisBody.quaternion.set(0, 0, 0, 1)
+  _clearForces() {
     this.chassisBody.velocity.setZero()
     this.chassisBody.angularVelocity.setZero()
+    this.chassisBody.quaternion.set(0, 0, 0, 1)
     for (let i = 0; i < 4; i++) {
       this.vehicle.applyEngineForce(0, i)
       this.vehicle.setBrake(0, i)
       this.vehicle.setSteeringValue(0, i)
     }
     this._currentSteer = 0
+  }
+
+  resetPosition(x, y, z) {
+    this.chassisBody.position.set(x, 0.8, z)
+    this._clearForces()
   }
 
   flipUpright() {
     const pos = this.chassisBody.position
-    // Place flat on road at exact ground height — wheels just touching
-    this.chassisBody.position.set(pos.x, this._groundY(), pos.z)
-    this.chassisBody.quaternion.set(0, 0, 0, 1)
-    this.chassisBody.velocity.setZero()
-    this.chassisBody.angularVelocity.setZero()
-    for (let i = 0; i < 4; i++) {
-      this.vehicle.applyEngineForce(0, i)
-      this.vehicle.setBrake(0, i)
-      this.vehicle.setSteeringValue(0, i)
-    }
-    this._currentSteer = 0
+    this.chassisBody.position.set(pos.x, 0.8, pos.z)
+    this._clearForces()
   }
 
   setColor(colorIndex) {
