@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Grand Theft Otto</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { overflow: hidden; height: 100%; background: #111; }
+    canvas.webgl { position: fixed; top: 0; left: 0; width: 100%; height: 100%; outline: none; }
+    #loading {
+      position: fixed; inset: 0; z-index: 100;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: #111; color: #fff; font-family: 'Segoe UI', sans-serif;
+      transition: opacity 0.6s;
+    }
+    #loading.hidden { opacity: 0; pointer-events: none; }
+    #loading h1 { font-size: 2.5rem; margin-bottom: 1rem; color: #ffd700; letter-spacing: 0.15em; }
+    #loading .bar-bg {
+      width: 300px; height: 8px; background: #333; border-radius: 4px; overflow: hidden;
+    }
+    #loading .bar-fill {
+      height: 100%; width: 0%; background: #ffd700; transition: width 0.3s;
+    }
+    #loading .hint { margin-top: 1rem; font-size: 0.85rem; color: #888; }
+    /* HUD overlay */
+    #hud {
+      position: fixed; bottom: 20px; left: 20px; z-index: 10;
+      color: #fff; font-family: 'Segoe UI', monospace; pointer-events: none;
+    }
+    #hud .speed { font-size: 2rem; font-weight: bold; }
+    #hud .info { font-size: 0.8rem; color: #aaa; margin-top: 4px; }
+    #hud .mode { font-size: 0.9rem; color: #ffd700; margin-top: 4px; }
+    #hud .boost-bar {
+      width: 120px; height: 6px; background: #333; border-radius: 3px; margin-top: 6px; overflow: hidden;
+    }
+    #hud .boost-fill { height: 100%; background: #00ccff; transition: width 0.1s; }
+    /* Portal prompt */
+    #portal-prompt {
+      position: fixed; top: 30%; left: 50%; transform: translateX(-50%);
+      color: #ffd700; font-family: 'Segoe UI', sans-serif; font-size: 1.3rem;
+      text-align: center; pointer-events: none; z-index: 10;
+      text-shadow: 0 0 10px rgba(255,215,0,0.5);
+      opacity: 0; transition: opacity 0.3s;
+    }
+    #portal-prompt.visible { opacity: 1; }
+    /* Race HUD */
+    #race-hud {
+      position: fixed; top: 20px; right: 20px; z-index: 10;
+      color: #fff; font-family: monospace; text-align: right; pointer-events: none;
+      display: none;
+    }
+    #race-hud .lap { font-size: 1.2rem; }
+    #race-hud .time { font-size: 1.5rem; font-weight: bold; color: #0f0; }
+    #race-hud .position { font-size: 1.8rem; color: #ffd700; font-weight: bold; }
+    /* Garage UI */
+    #garage-ui {
+      position: fixed; inset: 0; z-index: 20; display: none;
+      background: rgba(0,0,0,0.92);
+      font-family: 'Segoe UI', sans-serif; color: #fff;
+    }
+    #garage-ui .title { text-align: center; font-size: 2rem; padding: 20px; color: #ffd700; letter-spacing: 0.1em; }
+    #garage-ui .car-list {
+      display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; padding: 0 40px;
+      max-height: calc(100vh - 160px); overflow-y: auto;
+    }
+    #garage-ui .car-card {
+      width: 200px; padding: 15px; background: rgba(255,255,255,0.05);
+      border: 1px solid #333; border-radius: 8px; cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    #garage-ui .car-card:hover { border-color: #ffd700; background: rgba(255,215,0,0.05); }
+    #garage-ui .car-card.selected { border-color: #ffd700; background: rgba(255,215,0,0.1); }
+    #garage-ui .car-card h3 { font-size: 0.95rem; margin-bottom: 6px; }
+    #garage-ui .car-card .class-tag {
+      display: inline-block; padding: 2px 8px; border-radius: 3px;
+      font-size: 0.7rem; font-weight: bold; margin-bottom: 8px;
+    }
+    #garage-ui .car-card .class-tag.offroad { background: #556b2f; }
+    #garage-ui .car-card .class-tag.racing { background: #8b0000; }
+    #garage-ui .car-card .stat { font-size: 0.75rem; color: #aaa; margin: 2px 0; }
+    #garage-ui .car-card .colors { display: flex; gap: 4px; margin-top: 8px; }
+    #garage-ui .car-card .color-dot {
+      width: 18px; height: 18px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;
+    }
+    #garage-ui .car-card .color-dot.active { border-color: #fff; }
+    #garage-ui .drive-btn {
+      display: block; margin: 20px auto; padding: 12px 40px;
+      background: #ffd700; color: #111; font-weight: bold; font-size: 1rem;
+      border: none; border-radius: 6px; cursor: pointer;
+    }
+    #garage-ui .drive-btn:hover { background: #ffed4a; }
+    #garage-ui .back-btn {
+      position: absolute; top: 15px; left: 20px; background: none; border: 1px solid #555;
+      color: #aaa; padding: 6px 16px; border-radius: 4px; cursor: pointer; font-size: 0.85rem;
+    }
+    #garage-ui .back-btn:hover { border-color: #fff; color: #fff; }
+    /* Fade overlay for transitions */
+    #fade {
+      position: fixed; inset: 0; z-index: 50; background: #000;
+      opacity: 0; pointer-events: none; transition: opacity 0.5s;
+    }
+    #fade.active { opacity: 1; }
+    /* Off-map respawn timer */
+    #offmap-timer {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      z-index: 12; pointer-events: none; text-align: center; display: none;
+    }
+    #offmap-timer .label { color: #ff4444; font-family: monospace; font-size: 1rem; }
+    #offmap-timer .count { color: #fff; font-family: monospace; font-size: 4rem; font-weight: bold; }
+    /* Options menu */
+    #options-menu {
+      position: fixed; inset: 0; z-index: 60; display: none;
+      background: rgba(0,0,0,0.88);
+      font-family: 'Segoe UI', sans-serif; color: #fff;
+    }
+    #options-menu .panel {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 380px; background: rgba(30,30,30,0.95); border: 1px solid #444;
+      border-radius: 12px; padding: 30px; text-align: center;
+    }
+    #options-menu h2 { color: #ffd700; font-size: 1.6rem; margin-bottom: 20px; letter-spacing: 0.1em; }
+    #options-menu .opt-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 0; border-bottom: 1px solid #333;
+    }
+    #options-menu .opt-row:last-child { border-bottom: none; }
+    #options-menu .opt-label { font-size: 0.95rem; }
+    #options-menu .opt-btn {
+      background: #333; color: #fff; border: 1px solid #555; padding: 6px 16px;
+      border-radius: 4px; cursor: pointer; font-size: 0.85rem;
+    }
+    #options-menu .opt-btn:hover { background: #555; border-color: #888; }
+    #options-menu .opt-btn.active { background: #ffd700; color: #111; border-color: #ffd700; }
+    #options-menu .geo-group { display: flex; gap: 6px; flex-wrap: wrap; }
+    #options-menu .geo-btn {
+      background: #333; color: #ccc; border: 1px solid #555; padding: 5px 12px;
+      border-radius: 4px; cursor: pointer; font-size: 0.8rem;
+    }
+    #options-menu .geo-btn:hover { background: #555; }
+    #options-menu .geo-btn.selected { background: #ffd700; color: #111; border-color: #ffd700; }
+    #options-menu .resume-btn {
+      margin-top: 20px; padding: 10px 30px; background: #ffd700; color: #111;
+      border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 1rem;
+    }
+    #options-menu .resume-btn:hover { background: #ffed4a; }
+    #options-menu .restart-btn {
+      margin-top: 10px; padding: 8px 24px; background: none; color: #ff4444;
+      border: 1px solid #ff4444; border-radius: 6px; cursor: pointer; font-size: 0.9rem;
+    }
+    #options-menu .restart-btn:hover { background: rgba(255,68,68,0.15); }
+    /* Touch controls */
+    #touch-controls {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 15;
+      display: none; pointer-events: none;
+    }
+    @media (hover: none) and (pointer: coarse) {
+      #touch-controls { display: flex; }
+    }
+  </style>
+</head>
+<body>
+  <canvas class="webgl"></canvas>
+
+  <div id="loading">
+    <h1>GRAND THEFT OTTO</h1>
+    <div class="bar-bg"><div class="bar-fill" id="load-bar"></div></div>
+    <div class="hint">Loading assets...</div>
+  </div>
+
+  <div id="hud">
+    <div class="speed" id="hud-speed">0 mph</div>
+    <div class="info" id="hud-vehicle">—</div>
+    <div class="mode" id="hud-mode">HUB</div>
+    <div class="boost-bar"><div class="boost-fill" id="hud-boost"></div></div>
+    <div class="info" style="margin-top:8px">
+      WASD/Arrows: Drive &nbsp; Space: Brake &nbsp; Shift: Boost<br>
+      H: Horn &nbsp; R: Reset &nbsp; C: Camera &nbsp; G: Garage &nbsp; ESC: Options<br>
+      <span style="color:#555">Xbox: RT/LT Drive &nbsp; A=Boost &nbsp; X=Brake &nbsp; Start=Menu</span>
+    </div>
+  </div>
+
+  <div id="portal-prompt"></div>
+  <div id="race-hud">
+    <div class="position" id="race-pos">—</div>
+    <div class="lap" id="race-lap">Lap 1/3</div>
+    <div class="time" id="race-time">0:00.0</div>
+  </div>
+
+  <div id="garage-ui">
+    <button class="back-btn" id="garage-back">← Back to Hub</button>
+    <div class="title">GARAGE</div>
+    <div class="car-list" id="garage-list"></div>
+    <button class="drive-btn" id="garage-drive">DRIVE</button>
+  </div>
+
+  <div id="offmap-timer">
+    <div class="label">OUT OF BOUNDS</div>
+    <div class="count" id="offmap-count">3</div>
+    <div class="label">Respawning...</div>
+  </div>
+
+  <div id="options-menu">
+    <div class="panel">
+      <h2>OPTIONS</h2>
+      <div class="opt-row">
+        <span class="opt-label">Sound</span>
+        <button class="opt-btn active" id="opt-sound">ON</button>
+      </div>
+      <div class="opt-row">
+        <span class="opt-label">Creatures</span>
+        <button class="opt-btn active" id="opt-creatures">ON</button>
+      </div>
+      <div class="opt-row" style="flex-direction:column; align-items:flex-start; gap:8px;">
+        <span class="opt-label">Geography</span>
+        <div class="geo-group">
+          <button class="geo-btn selected" data-geo="desert">Desert</button>
+          <button class="geo-btn" data-geo="beach">Beach</button>
+          <button class="geo-btn" data-geo="city">City</button>
+          <button class="geo-btn" data-geo="country">Country</button>
+          <button class="geo-btn" data-geo="forest">Forest</button>
+        </div>
+      </div>
+      <button class="resume-btn" id="opt-resume">RESUME</button>
+      <br>
+      <button class="restart-btn" id="opt-restart">RESTART GAME</button>
+    </div>
+  </div>
+
+  <div id="fade"></div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
