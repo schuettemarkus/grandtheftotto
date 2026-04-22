@@ -24,9 +24,9 @@ export const VEHICLES = [
     wheels: {
       radius: 0.34,
       width: 0.28,
-      front: { x: 0.82, y: 0.0, z: 1.15 },
-      rear:  { x: 0.82, y: 0.0, z: 1.15 },
-      suspension: { stiffness: 40, damping: 6, travel: 0.3, restLength: 0.4 },
+      front: { x: 0.82, y: -0.15, z: 1.15 },
+      rear:  { x: 0.82, y: -0.15, z: 1.15 },
+      suspension: { stiffness: 45, damping: 7, travel: 0.25, restLength: 0.35 },
       frictionSlip: 3.5,
     },
   },

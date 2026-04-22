@@ -29,13 +29,13 @@ export class Vehicle {
     const def = this.def
     const { x, y, z } = def.chassisSize
 
-    // Chassis rigid body — shape offset upward to lower center of mass
-    const chassisShape = new CANNON.Box(new CANNON.Vec3(x, y, z * 0.5))
+    // Chassis rigid body — shape offset slightly upward to lower center of mass
+    const chassisShape = new CANNON.Box(new CANNON.Vec3(x, y * 0.6, z * 0.5))
     this.chassisBody = new CANNON.Body({ mass: def.mass })
-    // Offset shape upward so center of mass is below the geometric center
-    this.chassisBody.addShape(chassisShape, new CANNON.Vec3(0, 0.35, 0))
-    this.chassisBody.position.set(0, 2, 0)
-    this.chassisBody.angularDamping = 0.6  // high damping prevents tipping
+    // Small upward offset keeps center of mass low for stability
+    this.chassisBody.addShape(chassisShape, new CANNON.Vec3(0, 0.15, 0))
+    this.chassisBody.position.set(0, 1, 0)
+    this.chassisBody.angularDamping = 0.8  // very high — prevents any tipping
     this.chassisBody.linearDamping = 0.05
 
     // RaycastVehicle
@@ -488,10 +488,17 @@ export class Vehicle {
 
   flipUpright() {
     const pos = this.chassisBody.position
-    this.chassisBody.position.set(pos.x, pos.y + 2, pos.z)
+    // Place flat on ground at y=1, zero all motion
+    this.chassisBody.position.set(pos.x, 1, pos.z)
     this.chassisBody.quaternion.set(0, 0, 0, 1)
     this.chassisBody.velocity.setZero()
     this.chassisBody.angularVelocity.setZero()
+    for (let i = 0; i < 4; i++) {
+      this.vehicle.applyEngineForce(0, i)
+      this.vehicle.setBrake(0, i)
+      this.vehicle.setSteeringValue(0, i)
+    }
+    this._currentSteer = 0
   }
 
   setColor(colorIndex) {
