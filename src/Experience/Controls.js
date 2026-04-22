@@ -81,14 +81,14 @@ export class Controls extends EventEmitter {
       // X button (2) = brake/handbrake
       if (gp.buttons[2] && gp.buttons[2].pressed) brake = true
 
-      // B button (1) = horn (one-shot)
+      // B button (1) = reset car flat on road (one-shot)
       if (gp.buttons[1] && gp.buttons[1].pressed && !this._gpPrevButtons[1]) {
-        this.emit('horn')
+        this.emit('reset')
       }
 
-      // Y button (3) = reset (one-shot)
+      // Y button (3) = horn (one-shot)
       if (gp.buttons[3] && gp.buttons[3].pressed && !this._gpPrevButtons[3]) {
-        this.emit('reset')
+        this.emit('horn')
       }
 
       // Right bumper (5) = cycle camera (one-shot)
@@ -96,19 +96,19 @@ export class Controls extends EventEmitter {
         this.emit('cycleCamera')
       }
 
-      // Left bumper (4) = toggle garage (one-shot)
+      // Left bumper (4) = enter portal (one-shot)
       if (gp.buttons[4] && gp.buttons[4].pressed && !this._gpPrevButtons[4]) {
-        this.emit('toggleGarage')
+        this.emit('enter')
       }
 
-      // Start button (9) = escape/menu (one-shot)
+      // Start button (9) = menu / ESC (one-shot)
       if (gp.buttons[9] && gp.buttons[9].pressed && !this._gpPrevButtons[9]) {
         this.emit('escape')
       }
 
-      // Back/Select button (8) = enter portal (one-shot)
+      // Back/Select button (8) = garage (one-shot)
       if (gp.buttons[8] && gp.buttons[8].pressed && !this._gpPrevButtons[8]) {
-        this.emit('enter')
+        this.emit('toggleGarage')
       }
 
       // Save button states for one-shot detection

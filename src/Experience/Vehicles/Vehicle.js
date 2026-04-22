@@ -29,13 +29,13 @@ export class Vehicle {
     const def = this.def
     const { x, y, z } = def.chassisSize
 
-    // Chassis rigid body — shape offset slightly upward to lower center of mass
-    const chassisShape = new CANNON.Box(new CANNON.Vec3(x, y * 0.6, z * 0.5))
+    // Chassis rigid body — NO shape offset to avoid instability
+    // The center of mass is at the body origin, which the wheels suspend below
+    const chassisShape = new CANNON.Box(new CANNON.Vec3(x, y * 0.5, z * 0.5))
     this.chassisBody = new CANNON.Body({ mass: def.mass })
-    // Small upward offset keeps center of mass low for stability
-    this.chassisBody.addShape(chassisShape, new CANNON.Vec3(0, 0.15, 0))
-    this.chassisBody.position.set(0, 1, 0)
-    this.chassisBody.angularDamping = 0.8  // very high — prevents any tipping
+    this.chassisBody.addShape(chassisShape)
+    this.chassisBody.position.set(0, 1.5, 0)
+    this.chassisBody.angularDamping = 0.95  // very high — car cannot tip
     this.chassisBody.linearDamping = 0.05
 
     // RaycastVehicle
@@ -477,28 +477,37 @@ export class Vehicle {
     }
   }
 
+  /**
+   * Calculate the correct Y position so wheels rest on the ground plane (y=0).
+   * Formula: body_y = |wheel_connection_y| + suspensionRestLength + wheelRadius
+   */
+  _groundY() {
+    const w = this.def.wheels
+    return Math.abs(w.front.y) + w.suspension.restLength + w.radius + 0.05
+  }
+
   resetPosition(x, y, z) {
-    this.chassisBody.position.set(x, y, z)
+    // Use provided y or calculate ground-level y
+    const safeY = Math.max(y, this._groundY())
+    this.chassisBody.position.set(x, safeY, z)
     this.chassisBody.quaternion.set(0, 0, 0, 1)
     this.chassisBody.velocity.setZero()
     this.chassisBody.angularVelocity.setZero()
-    // Also zero out all wheel forces to prevent ghost movement
     for (let i = 0; i < 4; i++) {
       this.vehicle.applyEngineForce(0, i)
       this.vehicle.setBrake(0, i)
       this.vehicle.setSteeringValue(0, i)
     }
+    this._currentSteer = 0
   }
 
   flipUpright() {
     const pos = this.chassisBody.position
-    // Place flat on ground at y=2 (above surface so wheels settle naturally)
-    this.chassisBody.position.set(pos.x, 2, pos.z)
+    // Place flat on road at exact ground height — wheels just touching
+    this.chassisBody.position.set(pos.x, this._groundY(), pos.z)
     this.chassisBody.quaternion.set(0, 0, 0, 1)
     this.chassisBody.velocity.setZero()
     this.chassisBody.angularVelocity.setZero()
-    // Tiny downward nudge so suspension engages immediately
-    this.chassisBody.velocity.set(0, -0.5, 0)
     for (let i = 0; i < 4; i++) {
       this.vehicle.applyEngineForce(0, i)
       this.vehicle.setBrake(0, i)

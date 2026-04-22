@@ -6,12 +6,12 @@ import * as THREE from 'three'
  */
 
 const CREATURE_DEFS = [
-  // Dinosaurs — large, green, slower but persistent
-  { type: 'dinosaur', count: 4, chaseRange: 25, giveUpRange: 45, wanderSpeed: 1.5, chaseSpeed: 5, size: 1.8 },
-  // Dragons — red, flying height, medium speed
-  { type: 'dragon', count: 3, chaseRange: 30, giveUpRange: 50, wanderSpeed: 2, chaseSpeed: 7, size: 1.5 },
-  // Wolves — small, fast, pack hunters
-  { type: 'wolf', count: 6, chaseRange: 20, giveUpRange: 35, wanderSpeed: 2.5, chaseSpeed: 8, size: 0.7 },
+  // Dinosaurs — massive, slow, stomping — shakes screen when near
+  { type: 'dinosaur', count: 4, chaseRange: 35, giveUpRange: 55, wanderSpeed: 0.8, chaseSpeed: 2.5, size: 9 },
+  // Dragons — large, flying, medium speed
+  { type: 'dragon', count: 3, chaseRange: 40, giveUpRange: 60, wanderSpeed: 1.5, chaseSpeed: 5, size: 7.5 },
+  // Wolves — big, fast pack hunters
+  { type: 'wolf', count: 6, chaseRange: 28, giveUpRange: 45, wanderSpeed: 2, chaseSpeed: 6, size: 3.5 },
 ]
 
 export class Creatures {
@@ -286,9 +286,8 @@ export class Creatures {
         const dz = playerPos.z - c.z
         const dist = Math.sqrt(dx * dx + dz * dz)
 
-        // Creatures must NEVER touch the car — keep a hard 8-unit gap
-        // If they get within 8, they get forcefully pushed away instantly
-        const keepAwayDist = 8
+        // Creatures must NEVER touch the car — scale keep-away by creature size
+        const keepAwayDist = Math.max(12, c.size * 1.5)
         if (dist < keepAwayDist) {
           // Hard push — instant, not scaled by dt, so they can't creep in
           const pushX = -dx / (dist || 1)
@@ -344,10 +343,21 @@ export class Creatures {
       c.group.position.set(c.x, 0, c.z)
       c.group.rotation.y = c.angle
 
+      // Dinosaur stomp — body bobs up/down with heavy footfalls
+      if (c.type === 'dinosaur') {
+        const stompCycle = Math.abs(Math.sin(c.animPhase * 1.5))
+        // Lift body on each step, slam down
+        c.group.position.y = stompCycle * 0.4
+        // Tilt slightly with each step for weight shift
+        c.group.rotation.z = Math.sin(c.animPhase * 1.5) * 0.03
+      }
+
       // Animate parts
       c.group.traverse(child => {
         if (child.userData.leg) {
-          child.rotation.x = legAnim * (c.state === 'chase' ? 1 : 0.5)
+          // Dinosaurs stomp slowly, others walk/run
+          const legSpeed = c.type === 'dinosaur' ? 0.6 : 1
+          child.rotation.x = legAnim * legSpeed * (c.state === 'chase' ? 1 : 0.5)
         }
         if (child.userData.tail) {
           child.rotation.y = Math.sin(c.animPhase * 0.7) * 0.4
@@ -390,6 +400,26 @@ export class Creatures {
   /**
    * Get the nearest creature's state for HUD warning.
    */
+  /**
+   * Returns screen shake intensity (0-1) based on nearby dinosaur stomping.
+   */
+  getScreenShake(playerPos) {
+    if (!playerPos || this.disabled) return 0
+    let maxShake = 0
+    for (const c of this.creatures) {
+      if (c.type !== 'dinosaur') continue
+      const d = Math.sqrt((playerPos.x - c.x) ** 2 + (playerPos.z - c.z) ** 2)
+      if (d < 40) {
+        // Stomp pulse — peaks when foot hits ground
+        const stompPulse = Math.max(0, -Math.cos(c.animPhase * 1.5)) // 1 at stomp impact
+        const distFactor = 1 - (d / 40) // stronger when closer
+        const shake = stompPulse * distFactor * 0.8
+        if (shake > maxShake) maxShake = shake
+      }
+    }
+    return maxShake
+  }
+
   getNearestInfo(playerPos) {
     if (!playerPos) return null
     let nearest = null, nearestDist = Infinity

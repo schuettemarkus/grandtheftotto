@@ -326,6 +326,15 @@ export class Experience {
       const quat = new THREE.Quaternion().copy(this.vehicle.chassisBody.quaternion)
       this.camera.update(pos, quat, this.vehicle.speed / 3.6, delta)
 
+      // Dinosaur stomp screen shake
+      if (this.world instanceof HubWorld && this.creaturesEnabled && this.world.creatures) {
+        const shake = this.world.creatures.getScreenShake(pos)
+        if (shake > 0.05) {
+          this.camera.instance.position.x += (Math.random() - 0.5) * shake * 0.5
+          this.camera.instance.position.y += (Math.random() - 0.5) * shake * 0.3
+        }
+      }
+
       // Speedometer
       const speed = this.vehicle.speed
       document.getElementById('hud-speed').textContent = Math.floor(speed)
