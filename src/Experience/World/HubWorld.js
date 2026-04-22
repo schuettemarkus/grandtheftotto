@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import * as CANNON from 'cannon-es'
 import { Creatures } from './Creatures.js'
+import { Powerups } from './Powerups.js'
 
 /**
  * Geography presets — each defines ground color, sky colors, fog, and prop palette.
@@ -55,23 +56,34 @@ export class HubWorld {
     this._buildProps()
     this._buildTrees()
     this.creatures = new Creatures(this.scene)
+    this.powerups = new Powerups(this.scene)
   }
 
   _buildGround() {
     const geo = new THREE.PlaneGeometry(200, 200, 80, 80)
+
+    // Procedural ground texture matching the city
+    const texCanvas = document.createElement('canvas')
+    texCanvas.width = 512; texCanvas.height = 512
+    const tctx = texCanvas.getContext('2d')
+    this._paintGroundTexture(tctx, 512, 512)
+    const groundTex = new THREE.CanvasTexture(texCanvas)
+    groundTex.wrapS = THREE.RepeatWrapping
+    groundTex.wrapT = THREE.RepeatWrapping
+    groundTex.repeat.set(20, 20)
+
     const mat = new THREE.MeshStandardMaterial({
-      color: this.geo.ground, roughness: 0.85, metalness: 0.02,
+      map: groundTex,
+      color: this.geo.ground,
+      roughness: 0.88,
+      metalness: 0.02,
       envMapIntensity: 0.3,
     })
     this.ground = new THREE.Mesh(geo, mat)
     this.ground.rotation.x = -Math.PI / 2
     this.ground.receiveShadow = true
     this.scene.add(this.ground)
-
-    const grid = new THREE.GridHelper(200, 40, 0xaa997744, 0xaa997722)
-    grid.position.y = 0.01
-    this.scene.add(grid)
-    this.gridHelper = grid
+    // No grid lines — realistic ground only
 
     const groundBody = new CANNON.Body({
       type: CANNON.Body.STATIC,
@@ -81,6 +93,108 @@ export class HubWorld {
     groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0)
     this.physics.world.addBody(groundBody)
     this.groundBody = groundBody
+  }
+
+  /** Paint a procedural ground texture based on the city. */
+  _paintGroundTexture(ctx, w, h) {
+    const g = this.geography
+    if (g === 'dubai') {
+      // Sand with subtle wind ripples
+      ctx.fillStyle = '#d4b896'
+      ctx.fillRect(0, 0, w, h)
+      ctx.strokeStyle = 'rgba(180,150,110,0.3)'
+      ctx.lineWidth = 1
+      for (let y = 0; y < h; y += 6) {
+        ctx.beginPath()
+        ctx.moveTo(0, y)
+        for (let x = 0; x < w; x += 10) ctx.lineTo(x, y + Math.sin(x * 0.05 + y * 0.02) * 2)
+        ctx.stroke()
+      }
+      // Sand grain noise
+      for (let i = 0; i < 3000; i++) {
+        ctx.fillStyle = `rgba(${160 + Math.random()*40},${130 + Math.random()*30},${90 + Math.random()*20},0.15)`
+        ctx.fillRect(Math.random() * w, Math.random() * h, 1, 1)
+      }
+    } else if (g === 'miami') {
+      // Light sand with shells / subtle texture
+      ctx.fillStyle = '#f0e0c8'
+      ctx.fillRect(0, 0, w, h)
+      for (let i = 0; i < 2000; i++) {
+        const shade = 200 + Math.random() * 55
+        ctx.fillStyle = `rgba(${shade},${shade - 20},${shade - 40},0.2)`
+        ctx.fillRect(Math.random() * w, Math.random() * h, 2 + Math.random() * 2, 1)
+      }
+      // Occasional shell-like spots
+      for (let i = 0; i < 100; i++) {
+        ctx.fillStyle = `rgba(255,240,220,0.3)`
+        ctx.beginPath()
+        ctx.arc(Math.random() * w, Math.random() * h, 2 + Math.random() * 2, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    } else if (g === 'tokyo') {
+      // Asphalt with cracks and road markings
+      ctx.fillStyle = '#484848'
+      ctx.fillRect(0, 0, w, h)
+      // Asphalt grain
+      for (let i = 0; i < 5000; i++) {
+        const v = 50 + Math.random() * 40
+        ctx.fillStyle = `rgba(${v},${v},${v},0.15)`
+        ctx.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random(), 1 + Math.random())
+      }
+      // Cracks
+      ctx.strokeStyle = 'rgba(30,30,30,0.3)'
+      ctx.lineWidth = 0.5
+      for (let i = 0; i < 15; i++) {
+        ctx.beginPath()
+        let x = Math.random() * w, y = Math.random() * h
+        ctx.moveTo(x, y)
+        for (let j = 0; j < 5; j++) { x += (Math.random() - 0.5) * 40; y += Math.random() * 30; ctx.lineTo(x, y) }
+        ctx.stroke()
+      }
+      // Faint lane markings
+      ctx.strokeStyle = 'rgba(200,200,200,0.08)'
+      ctx.lineWidth = 3
+      ctx.setLineDash([20, 30])
+      ctx.beginPath(); ctx.moveTo(w/2, 0); ctx.lineTo(w/2, h); ctx.stroke()
+      ctx.setLineDash([])
+    } else if (g === 'tuscany') {
+      // Green grass with subtle variation
+      ctx.fillStyle = '#5a9040'
+      ctx.fillRect(0, 0, w, h)
+      for (let i = 0; i < 4000; i++) {
+        const g2 = 100 + Math.random() * 60
+        ctx.fillStyle = `rgba(${50 + Math.random()*30},${g2},${30 + Math.random()*20},0.12)`
+        ctx.fillRect(Math.random() * w, Math.random() * h, 2, 3 + Math.random() * 3)
+      }
+      // Wildflower dots
+      const flowerColors = ['rgba(255,255,100,0.3)', 'rgba(255,180,200,0.25)', 'rgba(200,180,255,0.2)']
+      for (let i = 0; i < 80; i++) {
+        ctx.fillStyle = flowerColors[i % 3]
+        ctx.beginPath()
+        ctx.arc(Math.random() * w, Math.random() * h, 1.5, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    } else if (g === 'vancouver') {
+      // Dark forest floor with pine needles and moss
+      ctx.fillStyle = '#2a4a1a'
+      ctx.fillRect(0, 0, w, h)
+      for (let i = 0; i < 4000; i++) {
+        ctx.fillStyle = `rgba(${30 + Math.random()*30},${50 + Math.random()*40},${15 + Math.random()*20},0.15)`
+        const angle = Math.random() * Math.PI
+        ctx.save()
+        ctx.translate(Math.random() * w, Math.random() * h)
+        ctx.rotate(angle)
+        ctx.fillRect(-3, 0, 6, 1) // pine needle
+        ctx.restore()
+      }
+      // Moss patches
+      for (let i = 0; i < 30; i++) {
+        ctx.fillStyle = 'rgba(60,90,40,0.2)'
+        ctx.beginPath()
+        ctx.arc(Math.random() * w, Math.random() * h, 5 + Math.random() * 10, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
   }
 
   _buildSkybox() {
@@ -429,6 +543,15 @@ export class HubWorld {
     }
 
     this.creatures.update(delta, vehiclePos)
+    this._lastPowerupState = this.powerups.update(delta, vehiclePos)
+  }
+
+  getPowerupState() {
+    return this._lastPowerupState || {}
+  }
+
+  getPowerupBonuses() {
+    return this.powerups ? this.powerups.getBonuses() : { speedMultiplier: 1, handlingMultiplier: 1, boostMultiplier: 1 }
   }
 
   getCreatureWarning(vehiclePos) {
@@ -437,7 +560,6 @@ export class HubWorld {
 
   dispose() {
     this.scene.remove(this.ground)
-    this.scene.remove(this.gridHelper)
     this.scene.remove(this.sky)
     this.scene.remove(this.ambient)
     this.scene.remove(this.sun)
@@ -450,6 +572,7 @@ export class HubWorld {
       if (obj.body) this.physics.removeBody(obj.body)
     }
     this.creatures.dispose()
+    this.powerups.dispose()
     this.objects = []
   }
 }

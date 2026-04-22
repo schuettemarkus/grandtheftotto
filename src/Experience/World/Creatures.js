@@ -19,6 +19,7 @@ export class Creatures {
     this.scene = scene
     this.creatures = []
     this.disabled = false
+    this._timewarpActive = false
     this._spawn()
   }
 
@@ -270,7 +271,9 @@ export class Creatures {
    * @param {THREE.Vector3|null} playerPos - vehicle position
    */
   update(delta, playerPos) {
-    const dt = delta / 1000
+    let dt = delta / 1000
+    // Timewarp slows creatures to 25% speed
+    if (this._timewarpActive) dt *= 0.25
 
     for (const c of this.creatures) {
       c.animPhase += dt * (c.state === 'chase' ? 8 : 4)

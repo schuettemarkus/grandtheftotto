@@ -421,19 +421,23 @@ export class Vehicle {
     this.chassisBody.vectorToLocalFrame(velocity, localVel)
     this.speed = Math.abs(localVel.z) * 3.6
 
-    // Engine force — 1.5x multiplier for snappier acceleration
-    let engineForce = controls.throttle * def.engineForce * 1.5
+    // Engine force with coin milestone bonuses
+    const bonuses = this._bonuses || { speedMultiplier: 1, handlingMultiplier: 1, boostMultiplier: 1 }
+    let engineForce = controls.throttle * def.engineForce * 1.5 * bonuses.speedMultiplier
 
-    // Higher effective top speed — allow 30% over listed max
-    const maxSpeed = (def.topSpeedKmh * 1.3) / 3.6
+    // Top speed with bonus
+    const maxSpeed = (def.topSpeedKmh * 1.3 * bonuses.speedMultiplier) / 3.6
     if (Math.abs(localVel.z) > maxSpeed && controls.throttle > 0) engineForce = 0
 
     // Boost — infinite, always available (Space bar)
     this.boostActive = controls.boost
     if (this.boostActive) {
-      engineForce *= 2.5
+      let boostMult = 2.5 * bonuses.boostMultiplier
+      // Superboost powerup — massive extra power
+      if (this._superboost) boostMult *= 2
+      engineForce *= boostMult
     }
-    this.boostMeter = 100 // always full
+    this.boostMeter = 100
 
     // AWD for STI, RWD for others
     if (this.def.id === 'wrx_sti') {
@@ -446,8 +450,8 @@ export class Vehicle {
       this.vehicle.applyEngineForce(engineForce, 3)
     }
 
-    // Smooth steering — interpolate toward target instead of snapping
-    const targetSteer = -controls.steering * def.maxSteer
+    // Smooth steering with handling bonus
+    const targetSteer = -controls.steering * def.maxSteer * bonuses.handlingMultiplier
     if (!this._currentSteer) this._currentSteer = 0
     const steerSpeed = 3.0 // radians per second of steering response
     const steerDiff = targetSteer - this._currentSteer

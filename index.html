@@ -23,18 +23,60 @@
       height: 100%; width: 0%; background: #ffd700; transition: width 0.3s;
     }
     #loading .hint { margin-top: 1rem; font-size: 0.85rem; color: #888; }
-    /* HUD overlay */
+    /* HUD — bottom-left dashboard */
     #hud {
       position: fixed; bottom: 20px; left: 20px; z-index: 10;
       color: #fff; font-family: 'Segoe UI', monospace; pointer-events: none;
     }
-    #hud .speed { font-size: 2rem; font-weight: bold; }
-    #hud .info { font-size: 0.8rem; color: #aaa; margin-top: 4px; }
-    #hud .mode { font-size: 0.9rem; color: #ffd700; margin-top: 4px; }
+    #hud .dash {
+      background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px; padding: 12px 18px; min-width: 180px;
+    }
+    #hud .speed-row { display: flex; align-items: baseline; gap: 6px; }
+    #hud .speed-val { font-size: 2.4rem; font-weight: bold; line-height: 1; }
+    #hud .speed-unit { font-size: 0.85rem; color: #aaa; }
+    #hud .gear-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+    #hud .gear { font-size: 1.4rem; font-weight: bold; color: #ffd700; min-width: 28px; }
+    #hud .rpm-bar { flex: 1; height: 6px; background: #222; border-radius: 3px; overflow: hidden; }
+    #hud .rpm-fill { height: 100%; border-radius: 3px; transition: width 0.05s; }
+    #hud .vehicle-name { font-size: 0.75rem; color: #888; margin-top: 4px; }
+    #hud .mode-badge { display: inline-block; font-size: 0.7rem; color: #111; background: #ffd700; padding: 1px 8px; border-radius: 3px; margin-top: 4px; }
+    #hud .coin-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 0.9rem; }
+    #hud .coin-icon { color: #ffd700; font-size: 1.1rem; }
     #hud .boost-bar {
-      width: 120px; height: 6px; background: #333; border-radius: 3px; margin-top: 6px; overflow: hidden;
+      width: 100%; height: 5px; background: #222; border-radius: 3px; margin-top: 6px; overflow: hidden;
     }
     #hud .boost-fill { height: 100%; background: #00ccff; transition: width 0.1s; }
+    /* Controls manual — bottom-right */
+    #controls-manual {
+      position: fixed; bottom: 20px; right: 20px; z-index: 10;
+      pointer-events: none; text-align: right;
+      background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px; padding: 10px 14px; color: #999;
+      font-family: monospace; font-size: 0.7rem; line-height: 1.6;
+    }
+    #controls-manual .key { color: #ddd; font-weight: bold; }
+    /* Powerup toast — bottom center */
+    #powerup-toast {
+      position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%);
+      z-index: 11; pointer-events: none; text-align: center;
+      font-family: 'Segoe UI', sans-serif; font-size: 1.2rem; font-weight: bold;
+      color: #fff; text-shadow: 0 0 15px rgba(0,0,0,0.8);
+      opacity: 0; transition: opacity 0.3s;
+      background: rgba(0,0,0,0.6); padding: 8px 24px; border-radius: 8px;
+    }
+    #powerup-toast.visible { opacity: 1; }
+    #powerup-toast .icon { font-size: 1.6rem; margin-right: 8px; vertical-align: middle; }
+    /* Coin milestone banner */
+    #milestone-banner {
+      position: fixed; top: 20%; left: 50%; transform: translateX(-50%);
+      z-index: 12; pointer-events: none; text-align: center;
+      font-family: 'Segoe UI', sans-serif; font-weight: bold;
+      opacity: 0; transition: opacity 0.5s;
+    }
+    #milestone-banner.visible { opacity: 1; }
+    #milestone-banner .title { font-size: 2rem; color: #ffd700; text-shadow: 0 0 20px rgba(255,215,0,0.5); }
+    #milestone-banner .sub { font-size: 1rem; color: #fff; margin-top: 4px; }
     /* Portal prompt */
     #portal-prompt {
       position: fixed; top: 30%; left: 50%; transform: translateX(-50%);
@@ -181,16 +223,36 @@
   </div>
 
   <div id="hud">
-    <div class="speed" id="hud-speed">0 mph</div>
-    <div class="info" id="hud-vehicle">—</div>
-    <div class="mode" id="hud-mode">HUB</div>
-    <div class="boost-bar"><div class="boost-fill" id="hud-boost"></div></div>
-    <div class="info" style="margin-top:8px">
-      WASD/Arrows: Drive &nbsp; Space: Brake &nbsp; Shift: Boost<br>
-      H: Horn &nbsp; R: Reset &nbsp; C: Camera &nbsp; G: Garage &nbsp; ESC: Options<br>
-      <span style="color:#555">Xbox: RT/LT Drive &nbsp; A=Boost &nbsp; X=Brake &nbsp; Start=Menu</span>
+    <div class="dash">
+      <div class="speed-row">
+        <span class="speed-val" id="hud-speed">0</span>
+        <span class="speed-unit">km/h</span>
+      </div>
+      <div class="gear-row">
+        <span class="gear" id="hud-gear">N</span>
+        <div class="rpm-bar"><div class="rpm-fill" id="hud-rpm" style="width:0%;background:#0f0"></div></div>
+      </div>
+      <div class="vehicle-name" id="hud-vehicle">—</div>
+      <span class="mode-badge" id="hud-mode">HUB</span>
+      <div class="coin-row"><span class="coin-icon">&#x1FA99;</span> <span id="hud-coins">0</span></div>
+      <div class="boost-bar"><div class="boost-fill" id="hud-boost"></div></div>
     </div>
   </div>
+
+  <div id="controls-manual">
+    <span class="key">W/S</span> or <span class="key">&#x2191;&#x2193;</span> Accelerate / Brake<br>
+    <span class="key">A/D</span> or <span class="key">&#x2190;&#x2192;</span> Steer<br>
+    <span class="key">SPACE</span> Boost<br>
+    <span class="key">SHIFT</span> Handbrake<br>
+    <span class="key">R</span> Reset car<br>
+    <span class="key">C</span> Camera<br>
+    <span class="key">G</span> Garage<br>
+    <span class="key">ESC</span> Options<br>
+    <span style="color:#555">Xbox: RT/LT&nbsp; A=Boost&nbsp; Start=Menu</span>
+  </div>
+
+  <div id="powerup-toast"></div>
+  <div id="milestone-banner"><div class="title"></div><div class="sub"></div></div>
 
   <div id="portal-prompt"></div>
   <div id="race-hud">

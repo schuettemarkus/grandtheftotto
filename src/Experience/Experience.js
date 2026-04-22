@@ -326,8 +326,56 @@ export class Experience {
       const quat = new THREE.Quaternion().copy(this.vehicle.chassisBody.quaternion)
       this.camera.update(pos, quat, this.vehicle.speed / 3.6, delta)
 
-      document.getElementById('hud-speed').textContent = Math.floor(this.vehicle.speed) + ' km/h'
+      // Speedometer
+      const speed = this.vehicle.speed
+      document.getElementById('hud-speed').textContent = Math.floor(speed)
+
+      // Gear indicator (simulated: N, 1-6 based on speed)
+      let gear = 'N', rpmPct = 0, rpmColor = '#0f0'
+      if (speed < 2) { gear = 'N'; rpmPct = 0 }
+      else if (speed < 30) { gear = '1'; rpmPct = speed / 30 * 100 }
+      else if (speed < 60) { gear = '2'; rpmPct = (speed - 30) / 30 * 100 }
+      else if (speed < 100) { gear = '3'; rpmPct = (speed - 60) / 40 * 100 }
+      else if (speed < 160) { gear = '4'; rpmPct = (speed - 100) / 60 * 100 }
+      else if (speed < 230) { gear = '5'; rpmPct = (speed - 160) / 70 * 100 }
+      else { gear = '6'; rpmPct = Math.min(100, (speed - 230) / 80 * 100) }
+      if (this.vehicle.chassisBody.velocity.length() < 0.5 && Math.abs(this.controls.throttle) < 0.1) { gear = 'N'; rpmPct = 0 }
+      if (rpmPct > 80) rpmColor = '#ff4400'
+      else if (rpmPct > 50) rpmColor = '#ffcc00'
+      else rpmColor = '#00cc44'
+      document.getElementById('hud-gear').textContent = gear
+      const rpmEl = document.getElementById('hud-rpm')
+      rpmEl.style.width = rpmPct + '%'
+      rpmEl.style.background = rpmColor
+
       document.getElementById('hud-boost').style.width = this.vehicle.boostMeter + '%'
+
+      // Apply powerup effects to vehicle
+      if (this.world instanceof HubWorld) {
+        const pState = this.world.getPowerupState()
+        const bonuses = this.world.getPowerupBonuses()
+        // Superboost active — extra multiplier applied in Vehicle.applyControls via flag
+        this.vehicle._superboost = pState.superboost || false
+        this.vehicle._bonuses = bonuses
+        // Shield — scatter creatures
+        if (pState.shield && this.creaturesEnabled && this.world.creatures) {
+          for (const c of this.world.creatures.creatures) {
+            const dx = c.x - pos.x, dz = c.z - pos.z
+            const dist = Math.sqrt(dx * dx + dz * dz)
+            if (dist < 30) {
+              c.state = 'wander'
+              c.x += (dx / (dist || 1)) * 5 * dt
+              c.z += (dz / (dist || 1)) * 5 * dt
+            }
+          }
+        }
+        // Timewarp — slow creatures
+        if (pState.timewarp && this.world.creatures) {
+          this.world.creatures._timewarpActive = true
+        } else if (this.world.creatures) {
+          this.world.creatures._timewarpActive = false
+        }
+      }
 
       // Audio
       if (this.soundEnabled) {
