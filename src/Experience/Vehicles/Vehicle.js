@@ -29,14 +29,13 @@ export class Vehicle {
     const def = this.def
     const { x, y, z } = def.chassisSize
 
-    // Chassis rigid body — NO shape offset to avoid instability
-    // The center of mass is at the body origin, which the wheels suspend below
+    // Chassis — simple box, no offset, low mass (cannon-es works best with mass 100-300)
     const chassisShape = new CANNON.Box(new CANNON.Vec3(x, y * 0.5, z * 0.5))
     this.chassisBody = new CANNON.Body({ mass: def.mass })
     this.chassisBody.addShape(chassisShape)
-    this.chassisBody.position.set(0, 1.5, 0)
-    this.chassisBody.angularDamping = 0.95  // very high — car cannot tip
-    this.chassisBody.linearDamping = 0.05
+    this.chassisBody.position.set(0, 4, 0) // spawn high, let it settle
+    this.chassisBody.angularDamping = 0.4
+    this.chassisBody.linearDamping = 0.1
 
     // RaycastVehicle
     this.vehicle = new CANNON.RaycastVehicle({
@@ -55,19 +54,21 @@ export class Vehicle {
       dampingRelaxation: w.suspension.damping,
       dampingCompression: w.suspension.damping * 0.8,
       maxSuspensionTravel: w.suspension.travel,
-      maxSuspensionForce: 100000,
+      maxSuspensionForce: 50000,
       frictionSlip: w.frictionSlip,
       customSlidingRotationalSpeed: -30,
       useCustomSlidingRotationalSpeed: true,
       suspensionRestLength: w.suspension.restLength,
     }
 
-    // FL, FR, RL, RR — wheel connection points relative to body center
+    // FL, FR, RL, RR
+    // z in data = distance from center along forward axis (always positive)
+    // Front wheels are at -z (nose), rear at +z (tail)
     const positions = [
-      new CANNON.Vec3(-w.front.x, w.front.y, -w.front.z),
-      new CANNON.Vec3( w.front.x, w.front.y, -w.front.z),
-      new CANNON.Vec3(-w.rear.x,  w.rear.y,   w.rear.z),
-      new CANNON.Vec3( w.rear.x,  w.rear.y,   w.rear.z),
+      new CANNON.Vec3(-w.front.x, w.front.y, -w.front.z), // front left
+      new CANNON.Vec3( w.front.x, w.front.y, -w.front.z), // front right
+      new CANNON.Vec3(-w.rear.x,  w.rear.y,   w.rear.z),  // rear left
+      new CANNON.Vec3( w.rear.x,  w.rear.y,   w.rear.z),  // rear right
     ]
 
     for (const pos of positions) {
@@ -76,11 +77,10 @@ export class Vehicle {
 
     this.vehicle.addToWorld(this.physics.world)
 
-    // Kinematic wheel bodies (for visual sync, not physics)
+    // Kinematic wheel bodies (visual sync only)
     this.wheelBodies = []
     for (let i = 0; i < this.vehicle.wheelInfos.length; i++) {
-      const wheel = this.vehicle.wheelInfos[i]
-      const shape = new CANNON.Cylinder(wheel.radius, wheel.radius, w.width, 12)
+      const shape = new CANNON.Cylinder(w.radius, w.radius, w.width, 12)
       const body = new CANNON.Body({ mass: 0, type: CANNON.Body.KINEMATIC })
       body.addShape(shape, new CANNON.Vec3(), new CANNON.Quaternion().setFromEuler(0, 0, Math.PI / 2))
       this.physics.world.addBody(body)
@@ -490,13 +490,14 @@ export class Vehicle {
   }
 
   resetPosition(x, y, z) {
-    this.chassisBody.position.set(x, 0.8, z)
+    // Spawn slightly above ground and let suspension settle naturally
+    this.chassisBody.position.set(x, 1.5, z)
     this._clearForces()
   }
 
   flipUpright() {
     const pos = this.chassisBody.position
-    this.chassisBody.position.set(pos.x, 0.8, pos.z)
+    this.chassisBody.position.set(pos.x, 1.5, pos.z)
     this._clearForces()
   }
 
