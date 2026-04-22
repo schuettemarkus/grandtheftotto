@@ -488,11 +488,13 @@ export class Vehicle {
 
   flipUpright() {
     const pos = this.chassisBody.position
-    // Place flat on ground at y=1, zero all motion
-    this.chassisBody.position.set(pos.x, 1, pos.z)
+    // Place flat on ground at y=2 (above surface so wheels settle naturally)
+    this.chassisBody.position.set(pos.x, 2, pos.z)
     this.chassisBody.quaternion.set(0, 0, 0, 1)
     this.chassisBody.velocity.setZero()
     this.chassisBody.angularVelocity.setZero()
+    // Tiny downward nudge so suspension engages immediately
+    this.chassisBody.velocity.set(0, -0.5, 0)
     for (let i = 0; i < 4; i++) {
       this.vehicle.applyEngineForce(0, i)
       this.vehicle.setBrake(0, i)

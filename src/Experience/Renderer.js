@@ -12,14 +12,20 @@ export class Renderer {
       canvas: this.canvas,
       antialias: true,
       alpha: false,
+      powerPreference: 'high-performance',
     })
     this.instance.setSize(this.sizes.width, this.sizes.height)
     this.instance.setPixelRatio(this.sizes.pixelRatio)
+
+    // Realistic rendering
     this.instance.shadowMap.enabled = true
     this.instance.shadowMap.type = THREE.PCFSoftShadowMap
     this.instance.toneMapping = THREE.ACESFilmicToneMapping
-    this.instance.toneMappingExposure = 1.2
+    this.instance.toneMappingExposure = 1.1
     this.instance.outputColorSpace = THREE.SRGBColorSpace
+
+    // Physically correct lighting for realistic materials
+    this.instance.useLegacyLights = false
   }
 
   resize() {

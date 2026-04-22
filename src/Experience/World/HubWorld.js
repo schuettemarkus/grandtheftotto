@@ -6,30 +6,35 @@ import { Creatures } from './Creatures.js'
  * Geography presets — each defines ground color, sky colors, fog, and prop palette.
  */
 const GEO_PRESETS = {
-  desert: {
-    ground: 0xd2b48c, sky: [0x88bbee, 0xd2b48c], fog: null,
+  dubai: {
+    label: 'Dubai',
+    ground: 0xd2b48c, sky: [0x99ccee, 0xe8d5a3], fog: [0xddccaa, 150, 350],
     treeColor: 0x6b8e23, treeTrunk: 0x8b6914, propTint: 0xdaa520,
-    ambientIntensity: 0.5, sunIntensity: 1.2, sunPos: [30, 50, 20],
+    ambientIntensity: 0.6, sunIntensity: 1.4, sunPos: [35, 60, 15],
   },
-  beach: {
-    ground: 0xf5deb3, sky: [0x66ccff, 0xf5deb3], fog: [0xaaddff, 120, 300],
+  miami: {
+    label: 'Miami',
+    ground: 0xf5deb3, sky: [0x55ccff, 0xffe4c4], fog: [0xaaddff, 120, 300],
     treeColor: 0x228b22, treeTrunk: 0x8b4513, propTint: 0xee9944,
-    ambientIntensity: 0.65, sunIntensity: 1.4, sunPos: [40, 55, 10],
+    ambientIntensity: 0.7, sunIntensity: 1.5, sunPos: [40, 55, 10],
   },
-  city: {
-    ground: 0x666666, sky: [0x8899aa, 0x555555], fog: [0x888888, 80, 250],
-    treeColor: 0x3a6b3a, treeTrunk: 0x5a3a1a, propTint: 0xaaaaaa,
-    ambientIntensity: 0.6, sunIntensity: 0.9, sunPos: [20, 40, 30],
+  tokyo: {
+    label: 'Tokyo',
+    ground: 0x555555, sky: [0x6677aa, 0x444455], fog: [0x667788, 60, 220],
+    treeColor: 0x3a6b3a, treeTrunk: 0x5a3a1a, propTint: 0x999999,
+    ambientIntensity: 0.5, sunIntensity: 0.8, sunPos: [20, 35, 30],
   },
-  country: {
-    ground: 0x4a8c3f, sky: [0x77bbee, 0x88cc66], fog: null,
+  tuscany: {
+    label: 'Tuscany',
+    ground: 0x5a9a3f, sky: [0x88bbee, 0x99cc77], fog: null,
     treeColor: 0x2d5a1e, treeTrunk: 0x6b3a1a, propTint: 0x8b6914,
-    ambientIntensity: 0.55, sunIntensity: 1.1, sunPos: [25, 45, 25],
+    ambientIntensity: 0.6, sunIntensity: 1.2, sunPos: [30, 50, 20],
   },
-  forest: {
-    ground: 0x2e5a1e, sky: [0x556b2f, 0x1a3a0e], fog: [0x334422, 50, 200],
+  vancouver: {
+    label: 'Vancouver',
+    ground: 0x2e5a1e, sky: [0x667788, 0x2a3a2e], fog: [0x445544, 50, 200],
     treeColor: 0x1a4a0e, treeTrunk: 0x4a2a0a, propTint: 0x6b4914,
-    ambientIntensity: 0.35, sunIntensity: 0.7, sunPos: [15, 35, 15],
+    ambientIntensity: 0.4, sunIntensity: 0.7, sunPos: [15, 30, 20],
   },
 }
 
@@ -53,9 +58,10 @@ export class HubWorld {
   }
 
   _buildGround() {
-    const geo = new THREE.PlaneGeometry(200, 200, 50, 50)
+    const geo = new THREE.PlaneGeometry(200, 200, 80, 80)
     const mat = new THREE.MeshStandardMaterial({
-      color: this.geo.ground, roughness: 0.9, metalness: 0.0,
+      color: this.geo.ground, roughness: 0.85, metalness: 0.02,
+      envMapIntensity: 0.3,
     })
     this.ground = new THREE.Mesh(geo, mat)
     this.ground.rotation.x = -Math.PI / 2
@@ -107,13 +113,25 @@ export class HubWorld {
     this.sky = new THREE.Mesh(skyGeo, skyMat)
     this.scene.add(this.sky)
 
+    // Environment map for realistic reflections on cars and props
+    const pmremGenerator = new THREE.PMREMGenerator(this.experience.renderer.instance)
+    pmremGenerator.compileCubemapShader()
+    const envScene = new THREE.Scene()
+    envScene.add(new THREE.Mesh(skyGeo.clone(), skyMat.clone()))
+    const envMap = pmremGenerator.fromScene(envScene, 0.04).texture
+    this.scene.environment = envMap
+    pmremGenerator.dispose()
+
     if (this.geo.fog) {
       this.scene.fog = new THREE.Fog(this.geo.fog[0], this.geo.fog[1], this.geo.fog[2])
     }
   }
 
   _buildLights() {
-    this.ambient = new THREE.AmbientLight(0xffffff, this.geo.ambientIntensity)
+    // Hemisphere light for sky/ground color bleed (more realistic than flat ambient)
+    this.ambient = new THREE.HemisphereLight(
+      this.geo.sky[0], this.geo.ground, this.geo.ambientIntensity
+    )
     this.scene.add(this.ambient)
 
     this.sun = new THREE.DirectionalLight(0xffffff, this.geo.sunIntensity)
@@ -293,7 +311,7 @@ export class HubWorld {
     }
 
     // City-specific: add some tall buildings
-    if (this.geography === 'city') {
+    if (this.geography === 'tokyo') {
       const buildMat = new THREE.MeshStandardMaterial({ color: 0x555566, roughness: 0.7 })
       for (let i = 0; i < 15; i++) {
         const h = 4 + Math.random() * 12
@@ -327,10 +345,10 @@ export class HubWorld {
   }
 
   _buildTrees() {
-    const count = this.geography === 'forest' ? 80 : this.geography === 'country' ? 40 : this.geography === 'beach' ? 15 : 10
+    const count = this.geography === 'vancouver' ? 80 : this.geography === 'tuscany' ? 40 : this.geography === 'miami' ? 20 : 10
     const treeColor = this.geo.treeColor
     const trunkColor = this.geo.treeTrunk
-    const isPalm = this.geography === 'beach'
+    const isPalm = this.geography === 'miami' || this.geography === 'dubai'
 
     for (let i = 0; i < count; i++) {
       const x = (Math.random() - 0.5) * 170

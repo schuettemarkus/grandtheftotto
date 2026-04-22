@@ -37,14 +37,18 @@ export class Experience {
     this.paused = false
 
     // Options state
-    this.soundEnabled = true
-    this.creaturesEnabled = true
-    this.geography = 'desert'
+    // Sound and creatures OFF by default — enable via ESC menu
+    this.soundEnabled = false
+    this.creaturesEnabled = false
+
+    // Random city on each load
+    const cities = ['dubai', 'miami', 'tokyo', 'tuscany', 'vancouver']
+    this.geography = cities[Math.floor(Math.random() * cities.length)]
 
     // Off-map respawn state
     this._offmapTimer = 0
     this._offmapActive = false
-    this._lastOnMapPos = new THREE.Vector3(0, 1, 0)
+    this._lastOnMapPos = new THREE.Vector3(0, 2, 0)
     this._MAP_BOUNDS = 95 // half-size of 200x200 ground
 
     // DOM elements
@@ -83,12 +87,15 @@ export class Experience {
   // ── Options Menu ──
 
   _setupOptionsMenu() {
-    // Sound toggle
+    // Sound toggle — starts OFF
     const soundBtn = document.getElementById('opt-sound')
+    soundBtn.textContent = 'OFF'
+    soundBtn.classList.remove('active')
     soundBtn.addEventListener('click', () => {
       this.soundEnabled = !this.soundEnabled
       soundBtn.textContent = this.soundEnabled ? 'ON' : 'OFF'
       soundBtn.classList.toggle('active', this.soundEnabled)
+      if (this.soundEnabled) this.audio.init()
       if (!this.soundEnabled && this.audio.ctx) {
         this.audio.engineGain.gain.setTargetAtTime(0, this.audio.ctx.currentTime, 0.01)
         this.audio.boostGain.gain.setTargetAtTime(0, this.audio.ctx.currentTime, 0.01)
@@ -96,8 +103,10 @@ export class Experience {
       }
     })
 
-    // Creatures toggle
+    // Creatures toggle — starts OFF
     const creaturesBtn = document.getElementById('opt-creatures')
+    creaturesBtn.textContent = 'OFF'
+    creaturesBtn.classList.remove('active')
     creaturesBtn.addEventListener('click', () => {
       this.creaturesEnabled = !this.creaturesEnabled
       creaturesBtn.textContent = this.creaturesEnabled ? 'ON' : 'OFF'
@@ -107,9 +116,10 @@ export class Experience {
       }
     })
 
-    // Geography buttons
+    // Geography buttons — highlight current random city
     const geoButtons = document.querySelectorAll('.geo-btn')
     geoButtons.forEach(btn => {
+      if (btn.dataset.geo === this.geography) btn.classList.add('selected')
       btn.addEventListener('click', () => {
         geoButtons.forEach(b => b.classList.remove('selected'))
         btn.classList.add('selected')
@@ -177,7 +187,7 @@ export class Experience {
       if (!this.creaturesEnabled && this.world.creatures) {
         this.world.creatures.setDisabled(true)
       }
-      this._spawnVehicle(0, 1, 0)
+      this._spawnVehicle(0, 2, 0)
       this._updateHUDMode('HUB')
     }
     else if (mode === 'garage') {
@@ -194,7 +204,7 @@ export class Experience {
         this.portalPrompt.classList.add('visible')
         setTimeout(() => this.portalPrompt.classList.remove('visible'), 2000)
         this.world = new HubWorld(this, this.geography)
-        this._spawnVehicle(0, 1, 0)
+        this._spawnVehicle(0, 2, 0)
         this._updateHUDMode('HUB')
         this.gameState.setMode('hub')
         this.fade.classList.remove('active')
@@ -212,7 +222,7 @@ export class Experience {
         this.portalPrompt.classList.add('visible')
         setTimeout(() => this.portalPrompt.classList.remove('visible'), 2000)
         this.world = new HubWorld(this, this.geography)
-        this._spawnVehicle(0, 1, 0)
+        this._spawnVehicle(0, 2, 0)
         this._updateHUDMode('HUB')
         this.gameState.setMode('hub')
         this.fade.classList.remove('active')
@@ -274,7 +284,7 @@ export class Experience {
         // Clamp respawn position inside bounds
         const sx = Math.max(-80, Math.min(80, rx))
         const sz = Math.max(-80, Math.min(80, rz))
-        this.vehicle.resetPosition(sx, 2, sz)
+        this.vehicle.resetPosition(sx, 2.5, sz)
         // Face toward center
         const angleToCenter = Math.atan2(-sx, -sz)
         this.vehicle.chassisBody.quaternion.setFromEuler(0, angleToCenter, 0)
@@ -346,7 +356,7 @@ export class Experience {
               this.portalPrompt.style.color = '#ffd700'
               this.portalPrompt.classList.add('visible')
             } else if (!nearMode) {
-              const cw = this.world.getCreatureWarning(pos)
+              const cw = this.creaturesEnabled ? this.world.getCreatureWarning(pos) : null
               if (cw) {
                 const label = cw.type.charAt(0).toUpperCase() + cw.type.slice(1)
                 if (cw.chasing) {
