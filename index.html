@@ -79,6 +79,18 @@
     #garage-ui .car-card .class-tag.offroad { background: #556b2f; }
     #garage-ui .car-card .class-tag.racing { background: #8b0000; }
     #garage-ui .car-card .stat { font-size: 0.75rem; color: #aaa; margin: 2px 0; }
+    #garage-ui .car-card .stat-row {
+      display: flex; align-items: center; gap: 6px; font-size: 0.7rem; color: #aaa; margin: 3px 0;
+    }
+    #garage-ui .car-card .stat-row span:first-child { width: 36px; text-align: right; }
+    #garage-ui .car-card .stat-bar {
+      flex: 1; height: 5px; background: #222; border-radius: 3px; overflow: hidden;
+    }
+    #garage-ui .car-card .stat-fill { height: 100%; border-radius: 3px; }
+    #garage-ui .car-card .stat-val { width: 44px; font-size: 0.65rem; color: #777; }
+    #garage-ui .car-card .car-blurb {
+      font-size: 0.7rem; color: #666; font-style: italic; margin-top: 6px; line-height: 1.3;
+    }
     #garage-ui .car-card .colors { display: flex; gap: 4px; margin-top: 8px; }
     #garage-ui .car-card .color-dot {
       width: 18px; height: 18px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;
