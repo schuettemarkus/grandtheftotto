@@ -30,6 +30,11 @@ body>canvas{display:block;position:fixed;top:0;left:0}
 /* ── Controls reference (bottom-right) ── */
 #controls-ref{position:fixed;bottom:14px;right:14px;pointer-events:none;z-index:10;background:rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px 12px;font:0.65rem monospace;color:rgba(255,255,255,0.55);line-height:1.6}
 #controls-ref .ctrl-title{color:rgba(255,215,0,0.7);font-weight:bold;font-size:0.7rem;margin-bottom:2px}
+/* ── Minimap (top-left) ── */
+#minimap{position:fixed;top:14px;left:14px;pointer-events:none;z-index:10;border-radius:8px;border:1px solid rgba(255,255,255,0.12);overflow:hidden}
+/* ── Stunt popup ── */
+#stunt-popup{position:fixed;top:40%;left:50%;transform:translate(-50%,-50%);pointer-events:none;z-index:10;font:bold 1.4rem monospace;color:#ffcc00;text-shadow:0 0 12px rgba(255,200,0,0.8);opacity:0;transition:opacity 0.3s,transform 0.3s}
+#stunt-popup.show{opacity:1;transform:translate(-50%,-60%)}
 </style>
 </head>
 <body>
@@ -67,6 +72,10 @@ body>canvas{display:block;position:fixed;top:0;left:0}
   <div id="game-coins">Coins: 0</div>
   <div id="game-creatures"></div>
 </div>
+<!-- Minimap (top-left) -->
+<canvas id="minimap" width="150" height="150"></canvas>
+<!-- Stunt popup -->
+<div id="stunt-popup"></div>
 <!-- Controls reference (bottom-right) -->
 <div id="controls-ref">
   <div class="ctrl-title">KEYBOARD</div>
@@ -79,6 +88,152 @@ body>canvas{display:block;position:fixed;top:0;left:0}
 <script type="module">
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js'
 import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js'
+
+// ════════════════════════════════════════════════════════════
+// SOUND ENGINE — fully procedural via Web Audio API (zero assets)
+// ════════════════════════════════════════════════════════════
+const AudioEngine = {
+  ctx: null, masterGain: null, engineOsc: null, engineGain: null,
+  boostOsc: null, boostGain: null, windNode: null, windGain: null,
+  ambientNode: null, ambientGain: null, _started: false,
+
+  init() {
+    if (this.ctx) return
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)()
+    this.masterGain = this.ctx.createGain()
+    this.masterGain.gain.value = 0.4
+    this.masterGain.connect(this.ctx.destination)
+
+    // Engine hum — sawtooth oscillator
+    this.engineOsc = this.ctx.createOscillator()
+    this.engineOsc.type = 'sawtooth'
+    this.engineOsc.frequency.value = 60
+    this.engineGain = this.ctx.createGain()
+    this.engineGain.gain.value = 0
+    const engFilter = this.ctx.createBiquadFilter()
+    engFilter.type = 'lowpass'; engFilter.frequency.value = 800
+    this.engineOsc.connect(engFilter)
+    engFilter.connect(this.engineGain)
+    this.engineGain.connect(this.masterGain)
+    this.engineOsc.start()
+
+    // Boost whine — higher frequency
+    this.boostOsc = this.ctx.createOscillator()
+    this.boostOsc.type = 'square'
+    this.boostOsc.frequency.value = 200
+    this.boostGain = this.ctx.createGain()
+    this.boostGain.gain.value = 0
+    const boostFilter = this.ctx.createBiquadFilter()
+    boostFilter.type = 'bandpass'; boostFilter.frequency.value = 1200; boostFilter.Q.value = 2
+    this.boostOsc.connect(boostFilter)
+    boostFilter.connect(this.boostGain)
+    this.boostGain.connect(this.masterGain)
+    this.boostOsc.start()
+
+    // Wind noise — for gliding/airborne
+    const windBuf = this.ctx.createBuffer(1, this.ctx.sampleRate * 2, this.ctx.sampleRate)
+    const windData = windBuf.getChannelData(0)
+    for (let i = 0; i < windData.length; i++) windData[i] = Math.random() * 2 - 1
+    this.windNode = this.ctx.createBufferSource()
+    this.windNode.buffer = windBuf; this.windNode.loop = true
+    this.windGain = this.ctx.createGain(); this.windGain.gain.value = 0
+    const windFilter = this.ctx.createBiquadFilter()
+    windFilter.type = 'highpass'; windFilter.frequency.value = 2000
+    this.windNode.connect(windFilter)
+    windFilter.connect(this.windGain)
+    this.windGain.connect(this.masterGain)
+    this.windNode.start()
+
+    // Ambient space drone
+    const ambBuf = this.ctx.createBuffer(1, this.ctx.sampleRate * 4, this.ctx.sampleRate)
+    const ambData = ambBuf.getChannelData(0)
+    for (let i = 0; i < ambData.length; i++) ambData[i] = Math.random() * 2 - 1
+    this.ambientNode = this.ctx.createBufferSource()
+    this.ambientNode.buffer = ambBuf; this.ambientNode.loop = true
+    this.ambientGain = this.ctx.createGain(); this.ambientGain.gain.value = 0.03
+    const ambFilter = this.ctx.createBiquadFilter()
+    ambFilter.type = 'lowpass'; ambFilter.frequency.value = 200
+    this.ambientNode.connect(ambFilter)
+    ambFilter.connect(this.ambientGain)
+    this.ambientGain.connect(this.masterGain)
+    this.ambientNode.start()
+
+    this._started = true
+  },
+
+  updateEngine(speed, isBoosting, isAirborne) {
+    if (!this._started) return
+    const absSpd = Math.abs(speed)
+    // Engine pitch and volume scale with speed
+    this.engineOsc.frequency.value = 60 + absSpd * 8
+    this.engineGain.gain.value = Math.min(0.15, absSpd * 0.008)
+    // Boost whine
+    this.boostOsc.frequency.value = 200 + absSpd * 12
+    this.boostGain.gain.value = isBoosting ? 0.06 : 0
+    // Wind
+    this.windGain.gain.value = isAirborne ? Math.min(0.08, absSpd * 0.003) : 0
+  },
+
+  playHit() {
+    if (!this._started) return
+    const osc = this.ctx.createOscillator()
+    const gain = this.ctx.createGain()
+    osc.type = 'square'; osc.frequency.value = 150
+    gain.gain.value = 0.2
+    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.15)
+    osc.connect(gain); gain.connect(this.masterGain)
+    osc.start(); osc.stop(this.ctx.currentTime + 0.15)
+  },
+
+  playPowerup(type) {
+    if (!this._started) return
+    const now = this.ctx.currentTime
+    const notes = type === 'giant' ? [130, 165, 196] : type === 'speed' ? [330, 440, 660] : [440, 554, 660]
+    notes.forEach((f, i) => {
+      const osc = this.ctx.createOscillator()
+      const gain = this.ctx.createGain()
+      osc.type = 'sine'; osc.frequency.value = f
+      gain.gain.value = 0.12
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15 + i * 0.1)
+      osc.connect(gain); gain.connect(this.masterGain)
+      osc.start(now + i * 0.08); osc.stop(now + 0.2 + i * 0.1)
+    })
+  },
+
+  playDrift() {
+    if (!this._started) return
+    const buf = this.ctx.createBuffer(1, this.ctx.sampleRate * 0.3, this.ctx.sampleRate)
+    const data = buf.getChannelData(0)
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length)
+    const src = this.ctx.createBufferSource(); src.buffer = buf
+    const gain = this.ctx.createGain(); gain.gain.value = 0.05
+    const filter = this.ctx.createBiquadFilter()
+    filter.type = 'bandpass'; filter.frequency.value = 600; filter.Q.value = 1
+    src.connect(filter); filter.connect(gain); gain.connect(this.masterGain)
+    src.start()
+  },
+
+  playMenuClick() {
+    if (!this._started) return
+    const osc = this.ctx.createOscillator()
+    const gain = this.ctx.createGain()
+    osc.type = 'sine'; osc.frequency.value = 800
+    gain.gain.value = 0.08
+    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.06)
+    osc.connect(gain); gain.connect(this.masterGain)
+    osc.start(); osc.stop(this.ctx.currentTime + 0.06)
+  },
+
+  setMuted(muted) {
+    if (!this._started) return
+    this.masterGain.gain.value = muted ? 0 : 0.4
+  }
+}
+
+// Start audio on first user interaction (browser policy)
+const _startAudio = () => { AudioEngine.init(); document.removeEventListener('click', _startAudio); document.removeEventListener('keydown', _startAudio) }
+document.addEventListener('click', _startAudio)
+document.addEventListener('keydown', _startAudio)
 
 // ════════════════════════════════════════════════════════════
 // SCENE, CAMERA, RENDERER
@@ -132,8 +287,8 @@ world.addContactMaterial(new CANNON.ContactMaterial(groundMat, carMat, {
   friction: 0.7, restitution: 0.0  // zero bounce — no weird hops
 }))
 
-// ── Ground ──
-const floorGeo = new THREE.PlaneGeometry(400, 400)
+// ── Ground — visual terrain with gentle hills (physics stays flat for stable driving) ──
+const floorGeo = new THREE.PlaneGeometry(400, 400, 80, 80)
 // Futuristic ground texture — subtle hex grid pattern
 const floorTex = (function() {
   const c = document.createElement('canvas'); c.width = 256; c.height = 256
@@ -172,6 +327,27 @@ const floor = new THREE.Mesh(floorGeo, floorMeshMat)
 floor.rotation.x = -Math.PI / 2
 floor.receiveShadow = true
 scene.add(floor)
+
+// Apply gentle Perlin-like noise to ground vertices for visual terrain
+// Simple noise using sine combinations (no library needed)
+function terrainNoise(x, z) {
+  return Math.sin(x * 0.015) * Math.cos(z * 0.012) * 2.5
+       + Math.sin(x * 0.035 + 1.3) * Math.cos(z * 0.028 + 0.7) * 1.2
+       + Math.sin(x * 0.008) * Math.sin(z * 0.009) * 3
+}
+{
+  const pos = floorGeo.attributes.position
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i)
+    // Flat zone near spawn (center 60-unit radius)
+    const distFromCenter = Math.sqrt(x*x + y*y)
+    const flatBlend = Math.max(0, Math.min(1, (distFromCenter - 30) / 30))
+    const h = terrainNoise(x, y) * flatBlend
+    pos.setZ(i, h) // Z is "up" before rotation
+  }
+  pos.needsUpdate = true
+  floorGeo.computeVertexNormals()
+}
 
 const floorBody = new CANNON.Body({
   type: CANNON.Body.STATIC,
@@ -824,6 +1000,7 @@ function updateCreatures(dt) {
       c.wanderTarget = { x: c.x, z: c.z }
       c.wanderTimer = 300
       // Red flash only
+      if (opts.sound) AudioEngine.playHit()
       const flash = document.getElementById('hit-flash')
       flash.style.opacity = '1'
       setTimeout(() => flash.style.opacity = '0', 200)
@@ -918,26 +1095,29 @@ for (let i = 0; i < 3; i++) {
   scene.add(label)
 }
 
-// ── Trees ──
+// ── Trees — positioned on terrain surface ──
+const treePositions = []
 for (let i = 0; i < 36; i++) {
   const x = (Math.random() - 0.5) * 320
   const z = (Math.random() - 0.5) * 320
   if (Math.abs(x) < 8 && Math.abs(z) < 8) continue
+  const groundY = terrainNoise(x, z) * Math.max(0, Math.min(1, (Math.sqrt(x*x+z*z) - 30) / 30))
   const trunkH = 6 + Math.random() * 4
   const trunk = new THREE.Mesh(
     new THREE.CylinderGeometry(0.5, 0.8, trunkH, 6),
     new THREE.MeshStandardMaterial({ color: 0x6b3a1a, roughness: 0.9 })
   )
-  trunk.position.set(x, trunkH / 2, z)
+  trunk.position.set(x, groundY + trunkH / 2, z)
   trunk.castShadow = true
   scene.add(trunk)
   const canopy = new THREE.Mesh(
     new THREE.SphereGeometry(3 + Math.random() * 2, 8, 6),
     new THREE.MeshStandardMaterial({ color: 0x2d5a1e, roughness: 0.8, flatShading: true })
   )
-  canopy.position.set(x, trunkH + 1.5, z)
+  canopy.position.set(x, groundY + trunkH + 1.5, z)
   canopy.castShadow = true
   scene.add(canopy)
+  treePositions.push([x, z])
 }
 
 // ════════════════════════════════════════════════════════════
@@ -998,6 +1178,8 @@ window.toggleOpt = function(key) {
   else opts[key] = !opts[key]
   if (key === 'creatures') creatureList.forEach(c => c.mesh.visible = opts.creatures)
   if (key === 'powerups') powerupMeshes.forEach(p => { if(!p.collected) p.mesh.visible = opts.powerups })
+  if (key === 'sound') { AudioEngine.init(); AudioEngine.setMuted(!opts.sound) }
+  AudioEngine.playMenuClick()
   buildOptMenu()
 }
 
@@ -1007,7 +1189,7 @@ function startGame() {
   if (spaceMode || onPlanet >= 0) { spaceMode = false; onPlanet = -1; carBody.type = CANNON.Body.DYNAMIC; removeSuperGlider() }
   carBody.position.set(0, 3, 0); carBody.velocity.setZero(); carBody.angularVelocity.setZero()
   carBody.quaternion.setFromEuler(0, 0, 0)
-  carAngle = 0; carSpeed = 0; coinCount = 0; creatureScore = 0; driftScore = 0; driftTime = 0
+  carAngle = 0; carSpeed = 0; coinCount = 0; creatureScore = 0; driftScore = 0; driftTime = 0; stuntScore = 0; stuntCombo = 0
   camera.up.set(0, 1, 0)
   closeMenu()
 }
@@ -1096,6 +1278,7 @@ function updatePowerups(dt) {
     const dx = px - p.x, dz = pz - p.z
     if (dx*dx+dz*dz < 9) {
       p.collected = true; p.mesh.visible = false
+      if (opts.sound) AudioEngine.playPowerup(p.type.effect)
       puToast.textContent = p.type.name + '!'
       puToast.style.color = '#'+p.type.color.toString(16).padStart(6,'0')
       puToast.style.opacity = '1'
@@ -1361,6 +1544,7 @@ function updateCar(dt) {
     // Drift ended — award points
     const pts = Math.floor(driftTime * 50)
     driftScore += pts
+    if (opts.sound) AudioEngine.playDrift()
     puToast.textContent = '+' + pts + ' DRIFT!'
     puToast.style.color = '#ffaa00'
     puToast.style.opacity = '1'
@@ -1510,7 +1694,89 @@ function drawSpeedo(mph) {
   ctx.fill()
 }
 
+// ── Minimap renderer ──
+const minimapCanvas = document.getElementById('minimap')
+const mmCtx = minimapCanvas.getContext('2d')
+const mmSize = 150, mmScale = mmSize / 400 // 400 = map width
+
+function drawMinimap() {
+  if (spaceMode || onPlanet >= 0) { minimapCanvas.style.opacity = '0.3'; return }
+  minimapCanvas.style.opacity = '1'
+  const ctx = mmCtx
+  ctx.clearRect(0, 0, mmSize, mmSize)
+
+  // Background
+  ctx.fillStyle = 'rgba(0,0,0,0.6)'
+  ctx.fillRect(0, 0, mmSize, mmSize)
+
+  // Map boundary
+  ctx.strokeStyle = 'rgba(100,200,80,0.3)'
+  ctx.lineWidth = 1
+  ctx.strokeRect(0, 0, mmSize, mmSize)
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)'
+  for (let i = 1; i < 4; i++) {
+    ctx.beginPath(); ctx.moveTo(i * mmSize/4, 0); ctx.lineTo(i * mmSize/4, mmSize); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(0, i * mmSize/4); ctx.lineTo(mmSize, i * mmSize/4); ctx.stroke()
+  }
+
+  // Helper: world coords to minimap coords
+  const toMM = (wx, wz) => [(wx + 200) * mmScale, (wz + 200) * mmScale]
+
+  // Powerups (uncollected)
+  for (const p of powerupMeshes) {
+    if (p.collected) continue
+    const [mx, mz] = toMM(p.x, p.z)
+    ctx.fillStyle = '#' + p.type.color.toString(16).padStart(6, '0')
+    ctx.fillRect(mx - 1.5, mz - 1.5, 3, 3)
+  }
+
+  // Creatures
+  if (opts.creatures) {
+    for (const c of creatureList) {
+      if (c.eaten) continue
+      const [mx, mz] = toMM(c.x, c.z)
+      ctx.fillStyle = c.state === 'chase' ? '#ff4444' : c.state === 'flee' ? '#4444ff' : '#ff8844'
+      ctx.beginPath(); ctx.arc(mx, mz, 2, 0, Math.PI * 2); ctx.fill()
+    }
+  }
+
+  // Portals
+  ctx.fillStyle = '#2196f3'
+  for (const pp of portalPositions) {
+    const [mx, mz] = toMM(pp[0], pp[1])
+    ctx.beginPath(); ctx.arc(mx, mz, 3, 0, Math.PI * 2); ctx.fill()
+  }
+
+  // Trees — small green dots
+  ctx.fillStyle = 'rgba(45,90,30,0.5)'
+  for (const [tx, tz] of treePositions) {
+    const [mx, mz] = toMM(tx, tz)
+    ctx.fillRect(mx - 1, mz - 1, 2, 2)
+  }
+
+  // Car — white triangle pointing in driving direction
+  const [cx, cz] = toMM(carBody.position.x, carBody.position.z)
+  ctx.save()
+  ctx.translate(cx, cz)
+  ctx.rotate(-carAngle)
+  ctx.fillStyle = '#ffffff'
+  ctx.beginPath()
+  ctx.moveTo(0, -5); ctx.lineTo(-3.5, 4); ctx.lineTo(3.5, 4)
+  ctx.closePath(); ctx.fill()
+  ctx.restore()
+
+  // Radial fade at edges
+  const grad = ctx.createRadialGradient(mmSize/2, mmSize/2, mmSize*0.35, mmSize/2, mmSize/2, mmSize*0.5)
+  grad.addColorStop(0, 'rgba(0,0,0,0)')
+  grad.addColorStop(1, 'rgba(0,0,0,0.7)')
+  ctx.fillStyle = grad
+  ctx.fillRect(0, 0, mmSize, mmSize)
+}
+
 function updateHUD(dt) {
+  drawMinimap()
   const actualMph = Math.abs(carSpeed) * 2.237
   // Smooth needle
   displayedMph += (actualMph - displayedMph) * Math.min(1, dt * 12)
@@ -1551,8 +1817,11 @@ function updateHUD(dt) {
     driftFillEl.style.width = '0%'
   }
 
-  // Coins + creatures + drift score
-  gameCoinsEl.textContent = 'Coins: ' + coinCount + (driftScore > 0 ? '  Drift: ' + driftScore : '')
+  // Coins + creatures + drift + stunt scores
+  let scoreText = 'Coins: ' + coinCount
+  if (driftScore > 0) scoreText += '  Drift: ' + driftScore
+  if (stuntScore > 0) scoreText += '  Stunts: ' + stuntScore
+  gameCoinsEl.textContent = scoreText
   if (creatureScore > 0) {
     gameCreaturesEl.textContent = 'Creatures: ' + creatureScore
   }
@@ -1934,6 +2203,162 @@ function removeSuperGlider() {
 }
 
 // ════════════════════════════════════════════════════════════
+// DAY/NIGHT CYCLE — 2 minute full cycle
+// ════════════════════════════════════════════════════════════
+let timeOfDay = 0.3 // start at morning (0=midnight, 0.25=sunrise, 0.5=noon, 0.75=sunset)
+const hemiLight = scene.children.find(c => c.isHemisphereLight)
+const origBg = new THREE.Color(0x020010)
+
+function updateDayNight(dt) {
+  if (spaceMode || onPlanet >= 0) return // freeze cycle in space
+
+  timeOfDay = (timeOfDay + dt / 120) % 1 // 120s = 2 min full cycle
+
+  // Sun position — arcs across the sky
+  const sunAngle = timeOfDay * Math.PI * 2 - Math.PI / 2 // -90° at midnight
+  const sunHeight = Math.sin(sunAngle)
+  const sunX = Math.cos(sunAngle) * 50
+  sun.position.set(sunX, Math.max(2, sunHeight * 60), 20)
+
+  // Sun intensity — bright during day, dim at night
+  const dayFactor = Math.max(0, sunHeight) // 0 at night, 1 at noon
+  sun.intensity = 0.2 + dayFactor * 1.5
+  if (hemiLight) hemiLight.intensity = 0.15 + dayFactor * 0.7
+
+  // Sky color — dark blue at night, light blue at day, orange at sunrise/sunset
+  const isTransition = Math.abs(sunHeight) < 0.3
+  if (dayFactor > 0.1) {
+    const skyR = isTransition ? 0.4 + dayFactor * 0.2 : 0.3 + dayFactor * 0.2
+    const skyG = isTransition ? 0.25 + dayFactor * 0.4 : 0.45 + dayFactor * 0.35
+    const skyB = isTransition ? 0.2 + dayFactor * 0.3 : 0.6 + dayFactor * 0.3
+    scene.background.setRGB(skyR * 0.15, skyG * 0.15, skyB * 0.2)
+  } else {
+    scene.background.copy(origBg)
+  }
+
+  // Stars opacity — bright at night, invisible during day
+  const starOpacity = Math.max(0, 1 - dayFactor * 3)
+  starMat.opacity = starOpacity * 0.9
+
+  // Headlight intensity — brighter at night
+  const headlightIntensity = 1 + (1 - dayFactor) * 3
+  carGroup.traverse(child => {
+    if (child.isMesh && child.material && child.material.emissive &&
+        child.material.emissiveIntensity !== undefined && child.material.color &&
+        child.material.color.getHex() === 0xffffff && child.material.emissive.getHex() === 0xffffcc) {
+      child.material.emissiveIntensity = headlightIntensity
+    }
+  })
+
+  // Tone mapping exposure
+  renderer.toneMappingExposure = 0.6 + dayFactor * 0.7
+}
+
+// ════════════════════════════════════════════════════════════
+// TIRE TRACKS — persistent marks on ground
+// ════════════════════════════════════════════════════════════
+const tireTrackSegs = []
+const maxTrackSegs = 200
+const trackGeo = new THREE.PlaneGeometry(0.4, 1.5)
+const trackMat = new THREE.MeshBasicMaterial({ color: 0x222211, transparent: true, opacity: 0.35, depthWrite: false })
+let _lastTrackFrame = 0
+
+function updateTireTracks(dt) {
+  if (spaceMode || onPlanet >= 0) return
+  _lastTrackFrame++
+
+  // Create track marks when drifting or driving fast
+  const absSpd = Math.abs(carSpeed)
+  const shouldMark = (_isDrifting || absSpd > 12) && !isAirborne && _lastTrackFrame % 3 === 0
+  if (shouldMark) {
+    for (const side of [-1, 1]) {
+      // Position at rear wheels
+      const wx = carBody.position.x + Math.cos(carAngle) * side * carW * 0.35 + Math.sin(carAngle) * carL * 0.32
+      const wz = carBody.position.z - Math.sin(carAngle) * side * carW * 0.35 + Math.cos(carAngle) * carL * 0.32
+      const seg = new THREE.Mesh(trackGeo, trackMat.clone())
+      seg.position.set(wx, 0.02, wz)
+      seg.rotation.x = -Math.PI / 2
+      seg.rotation.z = -carAngle
+      seg.material.opacity = _isDrifting ? 0.4 : 0.15
+      scene.add(seg)
+      tireTrackSegs.push({ mesh: seg, life: 1, maxLife: 1 })
+    }
+  }
+
+  // Fade old tracks
+  for (let i = tireTrackSegs.length - 1; i >= 0; i--) {
+    const t = tireTrackSegs[i]
+    t.life -= dt * 0.03 // slow fade ~33 seconds
+    t.mesh.material.opacity = t.life * (_isDrifting ? 0.4 : 0.25)
+    if (t.life <= 0 || tireTrackSegs.length > maxTrackSegs) {
+      scene.remove(t.mesh)
+      tireTrackSegs.splice(i, 1)
+    }
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// STUNT SCORE — air time, near misses, drift combos
+// ════════════════════════════════════════════════════════════
+let stuntScore = 0
+let stuntCombo = 0
+let stuntComboTimer = 0
+let airTimer = 0
+let wasAirborne = false
+const stuntPopup = document.getElementById('stunt-popup')
+
+function showStuntPopup(text, pts) {
+  stuntPopup.textContent = text + ' +' + pts
+  stuntPopup.classList.add('show')
+  setTimeout(() => stuntPopup.classList.remove('show'), 1200)
+}
+
+function updateStunts(dt) {
+  if (spaceMode || onPlanet >= 0) return
+
+  // Combo timer decay
+  if (stuntComboTimer > 0) {
+    stuntComboTimer -= dt
+    if (stuntComboTimer <= 0) stuntCombo = 0
+  }
+
+  // Air time tracking
+  if (isAirborne) {
+    airTimer += dt
+  } else if (wasAirborne && airTimer > 0.8) {
+    // Landed after air time
+    const pts = Math.floor(airTimer * 30) * Math.max(1, stuntCombo)
+    stuntScore += pts
+    stuntCombo++
+    stuntComboTimer = 3
+    const label = airTimer > 3 ? 'MEGA AIR' : airTimer > 1.5 ? 'BIG AIR' : 'AIR TIME'
+    showStuntPopup(label + (stuntCombo > 1 ? ' x' + stuntCombo : ''), pts)
+    airTimer = 0
+  } else {
+    airTimer = 0
+  }
+  wasAirborne = isAirborne
+
+  // Near miss detection — creature within 4 units at high speed without collision
+  if (!isAirborne && Math.abs(carSpeed) > 15) {
+    for (const c of creatureList) {
+      if (c.eaten || c._hitCooldown || c._nearMissCd) continue
+      const dx = carBody.position.x - c.x, dz = carBody.position.z - c.z
+      const dist = Math.sqrt(dx*dx + dz*dz)
+      if (dist > 3 && dist < 6) {
+        c._nearMissCd = true
+        setTimeout(() => c._nearMissCd = false, 2000)
+        const pts = 25 * Math.max(1, stuntCombo)
+        stuntScore += pts
+        stuntCombo++
+        stuntComboTimer = 3
+        showStuntPopup('NEAR MISS' + (stuntCombo > 1 ? ' x' + stuntCombo : ''), pts)
+      }
+    }
+  }
+}
+
+// ════════════════════════════════════════════════════════════
 // SPACE FLIGHT + PLANET SYSTEM
 // ════════════════════════════════════════════════════════════
 const _spaceDir = new THREE.Vector3(0, 0, -1) // current flight direction
@@ -2234,7 +2659,12 @@ function loop() {
   updateTrail(dt)
   updateCoins()
   updateHUD(dt)
+  updateDayNight(dt)
+  updateTireTracks(dt)
+  updateStunts(dt)
   checkBounds()
+  // Sound engine
+  if (opts.sound) AudioEngine.updateEngine(carSpeed, boosting, isAirborne)
 
   if (menuOpen) { renderer.render(scene, camera); return } // still render but don't process input further
   renderer.render(scene, camera)
