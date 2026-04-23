@@ -18,7 +18,59 @@ canvas{display:block;position:fixed;top:0;left:0}
 </style>
 </head>
 <body>
-<div id="loading"><h1>GRAND THEFT OTTO</h1><p>Loading...</p></div>
+<div id="loading">
+  <h1>GRAND THEFT OTTO</h1>
+  <canvas id="load-anim" width="300" height="80" style="margin-top:10px"></canvas>
+  <script>
+  // Animated 2D car on loading screen
+  (function(){
+    const c = document.getElementById('load-anim')
+    const x = c.getContext('2d')
+    let frame = 0
+    function drawLoad(){
+      if(!c.parentElement || c.parentElement.style.opacity==='0') return
+      x.clearRect(0,0,300,80)
+      // Road
+      x.fillStyle='#444'; x.fillRect(0,55,300,20)
+      x.strokeStyle='#ffcc00'; x.lineWidth=2; x.setLineDash([12,8])
+      x.beginPath(); x.moveTo(0,65); x.lineTo(300,65); x.stroke()
+      x.setLineDash([])
+      // Car position
+      const cx = (frame * 1.5) % 360 - 30
+      // Wheels
+      x.fillStyle='#111'
+      x.beginPath(); x.arc(cx-10,55,5,0,Math.PI*2); x.fill()
+      x.beginPath(); x.arc(cx+12,55,5,0,Math.PI*2); x.fill()
+      x.fillStyle='#888'
+      x.beginPath(); x.arc(cx-10,55,2.5,0,Math.PI*2); x.fill()
+      x.beginPath(); x.arc(cx+12,55,2.5,0,Math.PI*2); x.fill()
+      // Body
+      x.fillStyle='#003399'
+      x.fillRect(cx-16,40,34,15)
+      // Cabin
+      x.fillStyle='#003399'
+      x.beginPath(); x.moveTo(cx-6,40); x.lineTo(cx-2,28); x.lineTo(cx+14,28); x.lineTo(cx+18,40); x.fill()
+      // Windows
+      x.fillStyle='#88bbdd'
+      x.beginPath(); x.moveTo(cx-4,40); x.lineTo(cx,30); x.lineTo(cx+12,30); x.lineTo(cx+16,40); x.fill()
+      // Headlight
+      x.fillStyle='#ffffaa'; x.fillRect(cx+16,43,3,4)
+      // Taillight
+      x.fillStyle='#ff3333'; x.fillRect(cx-17,43,2,4)
+      // Exhaust puffs
+      for(let i=0;i<3;i++){
+        const px = cx - 20 - i*8 - Math.sin(frame*0.1+i)*3
+        const py = 50 + Math.cos(frame*0.15+i)*2
+        x.fillStyle=`rgba(180,180,180,${0.3-i*0.1})`
+        x.beginPath(); x.arc(px,py,3+i,0,Math.PI*2); x.fill()
+      }
+      frame++
+      requestAnimationFrame(drawLoad)
+    }
+    drawLoad()
+  })()
+  </script>
+</div>
 <div id="hud">
   <div class="speed" id="spd">0 km/h</div>
   <div class="info">WASD / Arrows: Drive &nbsp; Space: Boost &nbsp; R: Reset</div>
@@ -64,6 +116,36 @@ sun.shadow.camera.top = 50; sun.shadow.camera.bottom = -50
 sun.shadow.camera.far = 120
 sun.shadow.mapSize.set(2048, 2048)
 scene.add(sun)
+
+// ════════════════════════════════════════════════════════════
+// PHYSICS WORLD (must be before track/car/props that reference groundMat)
+// ════════════════════════════════════════════════════════════
+const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -15, 0) })
+world.broadphase = new CANNON.SAPBroadphase(world)
+world.defaultContactMaterial.friction = 0.3
+world.defaultContactMaterial.restitution = 0.2
+
+const groundMat = new CANNON.Material('ground')
+const carMat = new CANNON.Material('car')
+world.addContactMaterial(new CANNON.ContactMaterial(groundMat, carMat, {
+  friction: 0.7, restitution: 0.0  // zero bounce — no weird hops
+}))
+
+// ── Ground ──
+const floorGeo = new THREE.PlaneGeometry(200, 200)
+const floorMeshMat = new THREE.MeshStandardMaterial({ color: 0x559944, roughness: 0.9 })
+const floor = new THREE.Mesh(floorGeo, floorMeshMat)
+floor.rotation.x = -Math.PI / 2
+floor.receiveShadow = true
+scene.add(floor)
+
+const floorBody = new CANNON.Body({
+  type: CANNON.Body.STATIC,
+  shape: new CANNON.Plane(),
+  material: groundMat,
+})
+floorBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0)
+world.addBody(floorBody)
 
 // ════════════════════════════════════════════════════════════
 // SPACE ENVIRONMENT — stars, planets, meteors beyond the map
@@ -392,38 +474,6 @@ for (const [rx, rz, w, d] of [
 }
 
 // ════════════════════════════════════════════════════════════
-// PHYSICS WORLD
-// ════════════════════════════════════════════════════════════
-const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -15, 0) })
-world.broadphase = new CANNON.SAPBroadphase(world)
-world.defaultContactMaterial.friction = 0.3
-world.defaultContactMaterial.restitution = 0.2
-
-const groundMat = new CANNON.Material('ground')
-const carMat = new CANNON.Material('car')
-world.addContactMaterial(new CANNON.ContactMaterial(groundMat, carMat, {
-  friction: 0.7, restitution: 0.1
-}))
-
-// ════════════════════════════════════════════════════════════
-// GROUND
-// ════════════════════════════════════════════════════════════
-const floorGeo = new THREE.PlaneGeometry(200, 200)
-const floorMat = new THREE.MeshStandardMaterial({ color: 0x559944, roughness: 0.9 })
-const floor = new THREE.Mesh(floorGeo, floorMat)
-floor.rotation.x = -Math.PI / 2
-floor.receiveShadow = true
-scene.add(floor)
-
-const floorBody = new CANNON.Body({
-  type: CANNON.Body.STATIC,
-  shape: new CANNON.Plane(),
-  material: groundMat,
-})
-floorBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0)
-world.addBody(floorBody)
-
-// ════════════════════════════════════════════════════════════
 // CAR — Simple box chassis with 4 sphere wheels via constraints
 // Using a single box body + velocity-based driving (no RaycastVehicle)
 // ════════════════════════════════════════════════════════════
@@ -600,60 +650,241 @@ const titleMesh = new THREE.Mesh(
 titleMesh.position.set(0, 6, -12)
 scene.add(titleMesh)
 
-// ── Ramps ──
-function addRamp(x, z, ry) {
-  const geo = new THREE.BoxGeometry(4, 0.3, 5)
-  const mat = new THREE.MeshStandardMaterial({ color: 0xdaa520, roughness: 0.6 })
+// ── Strategic jump ramps ──
+function addJump(x, z, ry, w, slope, color) {
+  const len = 6, h = 0.3
+  const geo = new THREE.BoxGeometry(w || 5, h, len)
+  const mat = new THREE.MeshStandardMaterial({ color: color || 0xdaa520, roughness: 0.5 })
   const mesh = new THREE.Mesh(geo, mat)
   mesh.castShadow = true
   scene.add(mesh)
   const body = new CANNON.Body({
     type: CANNON.Body.STATIC,
-    shape: new CANNON.Box(new CANNON.Vec3(2, 0.15, 2.5)),
+    shape: new CANNON.Box(new CANNON.Vec3((w||5)/2, h/2, len/2)),
     material: groundMat,
   })
   body.position.set(x, 0.8, z)
-  body.quaternion.setFromEuler(-0.2, ry, 0)
+  body.quaternion.setFromEuler(-(slope || 0.18), ry || 0, 0)
   mesh.position.copy(body.position)
   mesh.quaternion.copy(body.quaternion)
   world.addBody(body)
-}
-addRamp(12, 8, 0)
-addRamp(-15, 12, 0.5)
-addRamp(8, -18, -0.3)
-addRamp(-12, -8, 1.2)
-
-// ── Cones ──
-for (let i = 0; i < 25; i++) {
-  const x = (Math.random() - 0.5) * 70
-  const z = (Math.random() - 0.5) * 70
-  if (Math.abs(x) < 5 && Math.abs(z) < 5) continue
-  addCylinder(x, 0.4, z, 0.2, 0.8, 0xff6600, 1)
-}
-
-// ── Crates ──
-for (let i = 0; i < 15; i++) {
-  const x = (Math.random() - 0.5) * 60
-  const z = (Math.random() - 0.5) * 60
-  if (Math.abs(x) < 5 && Math.abs(z) < 5) continue
-  addBox(x, 0.5, z, 1, 1, 1, 0x8b6914, 3)
-}
-
-// ── Bowling pins ──
-for (let row = 0; row < 4; row++) {
-  for (let col = 0; col <= row; col++) {
-    addCylinder(-25 + col - row * 0.5, 0.4, 15 + row, 0.12, 0.7, 0xffffff, 0.3)
+  // Chevron stripes on top
+  const stripeMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, emissive: 0xffaa00, emissiveIntensity: 0.3 })
+  for (let i = 0; i < 3; i++) {
+    const s = new THREE.Mesh(new THREE.BoxGeometry((w||5) * 0.8, 0.02, 0.2), stripeMat)
+    s.position.copy(mesh.position)
+    s.rotation.copy(mesh.rotation)
+    const offset = new THREE.Vector3(0, 0.18, -1.5 + i * 1.5)
+    offset.applyEuler(mesh.rotation)
+    s.position.add(offset)
+    scene.add(s)
   }
 }
 
-// ── Big bouncy balls ──
-addSphere(20, 2, -10, 1.5, 0xff4444, 5)
-addSphere(-20, 2, -15, 1.2, 0x44aaff, 4)
-addSphere(15, 2, 20, 1.8, 0xffcc00, 6)
+// Big center jump — aimed straight ahead from spawn
+addJump(0, -20, 0, 6, 0.22, 0xff6600)
+// Side jumps in an X pattern
+addJump(25, -25, Math.PI/4, 5, 0.2, 0xdaa520)
+addJump(-25, -25, -Math.PI/4, 5, 0.2, 0xdaa520)
+addJump(25, 25, -Math.PI/4, 5, 0.18, 0xdaa520)
+addJump(-25, 25, Math.PI/4, 5, 0.18, 0xdaa520)
+// Long distance jumps
+addJump(50, 0, Math.PI/2, 6, 0.25, 0xff4400)
+addJump(-50, 0, Math.PI/2, 6, 0.25, 0xff4400)
+addJump(0, 50, 0, 6, 0.25, 0xff4400)
+// Small kickers scattered around
+addJump(15, -40, 0.3, 3, 0.15, 0xcc8800)
+addJump(-35, 15, 1.0, 3, 0.15, 0xcc8800)
+addJump(40, -15, 2.0, 3, 0.15, 0xcc8800)
+addJump(-15, 40, -0.5, 3, 0.15, 0xcc8800)
 
-// ── Domino chain ──
-for (let i = 0; i < 12; i++) {
-  addBox(-10 + i * 1.5, 1.5, -25, 0.3, 3, 1.2, 0x4444aa, 2)
+// ── Earth berms — raised mounds to drive over ──
+function addBerm(x, z, radius, height) {
+  // Visual — half sphere
+  const geo = new THREE.SphereGeometry(radius, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2)
+  const mat = new THREE.MeshStandardMaterial({ color: 0x7a6b3a, roughness: 0.95, flatShading: true })
+  const mesh = new THREE.Mesh(geo, mat)
+  mesh.position.set(x, 0, z)
+  mesh.castShadow = true
+  scene.add(mesh)
+  // Physics — static sphere slightly underground
+  const body = new CANNON.Body({
+    type: CANNON.Body.STATIC,
+    shape: new CANNON.Sphere(radius),
+    material: groundMat,
+  })
+  body.position.set(x, -radius + height, z)
+  world.addBody(body)
+}
+// Berm cluster — creates a rolling terrain section
+addBerm(30, 30, 5, 1.5)
+addBerm(35, 35, 3, 1.0)
+addBerm(-30, -30, 6, 2.0)
+addBerm(-35, -25, 4, 1.2)
+addBerm(0, 35, 4, 1.3)
+addBerm(-40, 40, 5, 1.5)
+addBerm(45, -35, 3, 0.8)
+addBerm(20, -50, 5, 1.8)
+
+// ── Creatures — purely visual, no physics interaction ──
+const creatureList = []
+
+function buildCreature(type) {
+  const g = new THREE.Group()
+  if (type === 'dinosaur') {
+    const s = 3
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x2e8b57, roughness: 0.7, flatShading: true })
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x1a5a35, roughness: 0.7, flatShading: true })
+    // Body
+    g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(s*0.7,s*0.8,s*1.4), bodyMat), { position: new THREE.Vector3(0,s*0.9,0) }))
+    // Head
+    g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(s*0.5,s*0.5,s*0.6), bodyMat), { position: new THREE.Vector3(0,s*1.4,-s*0.8) }))
+    // Jaw
+    g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(s*0.45,s*0.15,s*0.5), darkMat), { position: new THREE.Vector3(0,s*1.1,-s*0.85) }))
+    // Eyes
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, emissive: 0xffcc00, emissiveIntensity: 0.5 })
+    for (const side of [-1,1]) g.add(Object.assign(new THREE.Mesh(new THREE.SphereGeometry(s*0.08,6,6), eyeMat), { position: new THREE.Vector3(side*s*0.22,s*1.5,-s*0.95) }))
+    // Legs
+    for (const side of [-1,1]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(s*0.25,s*0.7,s*0.3), darkMat); leg.position.set(side*s*0.3,s*0.35,s*0.2); leg.userData.leg=true; g.add(leg) }
+    // Arms
+    for (const side of [-1,1]) g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(s*0.08,s*0.25,s*0.08), bodyMat), { position: new THREE.Vector3(side*s*0.35,s*1.0,-s*0.4) }))
+    // Tail
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(s*0.3,s*0.35,s*1.2), bodyMat); tail.position.set(0,s*0.8,s*1.1); tail.userData.tail=true; g.add(tail)
+    // Spines
+    for (let i=0;i<6;i++) { const sp = new THREE.Mesh(new THREE.ConeGeometry(s*0.06,s*0.2,4), new THREE.MeshStandardMaterial({color:0x3a7a4a,flatShading:true})); sp.position.set(0,s*1.35,-s*0.4+i*s*0.35); g.add(sp) }
+    g.castShadow = true
+  }
+  else if (type === 'dragon') {
+    const s = 2.5
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x8b0000, roughness: 0.6, flatShading: true })
+    const wingMat = new THREE.MeshStandardMaterial({ color: 0xa01020, roughness: 0.7, flatShading: true, side: THREE.DoubleSide })
+    // Body
+    g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(s*0.6,s*0.5,s*1.3), bodyMat), { position: new THREE.Vector3(0,s*1.2,0) }))
+    // Head
+    g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(s*0.4,s*0.35,s*0.5), bodyMat), { position: new THREE.Vector3(0,s*1.4,-s*0.7) }))
+    // Horns
+    const hornMat = new THREE.MeshStandardMaterial({ color: 0x444444 })
+    for (const side of [-1,1]) { const h = new THREE.Mesh(new THREE.ConeGeometry(s*0.04,s*0.3,5), hornMat); h.position.set(side*s*0.15,s*1.65,-s*0.6); h.rotation.x=-0.3; g.add(h) }
+    // Eyes
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0xff4400, emissive: 0xff4400, emissiveIntensity: 1 })
+    for (const side of [-1,1]) g.add(Object.assign(new THREE.Mesh(new THREE.SphereGeometry(s*0.06,6,6), eyeMat), { position: new THREE.Vector3(side*s*0.16,s*1.48,-s*0.88) }))
+    // Wings
+    for (const side of [-1,1]) {
+      const wGeo = new THREE.BufferGeometry()
+      const verts = new Float32Array([0,0,0, side*s*1.5,-s*0.3,0, side*s*1.2,s*0.8,0, side*s*0.4,s*0.5,0])
+      wGeo.setAttribute('position', new THREE.BufferAttribute(verts, 3))
+      wGeo.setIndex([0,1,2, 0,2,3])
+      wGeo.computeVertexNormals()
+      const w = new THREE.Mesh(wGeo, wingMat); w.position.set(0,s*1.3,-s*0.1); w.userData.wing=true; w.userData.side=side; g.add(w)
+    }
+    // Legs
+    for (const side of [-1,1]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(s*0.15,s*0.6,s*0.2), bodyMat); leg.position.set(side*s*0.25,s*0.6,s*0.2); leg.userData.leg=true; g.add(leg) }
+    // Tail
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(s*0.2,s*0.2,s*1.0), bodyMat); tail.position.set(0,s*1.1,s*0.95); tail.userData.tail=true; g.add(tail)
+    // Fire glow
+    const fire = new THREE.Mesh(new THREE.SphereGeometry(s*0.15,8,8), new THREE.MeshStandardMaterial({color:0xff6600,emissive:0xff4400,emissiveIntensity:2,transparent:true,opacity:0}))
+    fire.position.set(0,s*1.35,-s*1.0); fire.userData.fire=true; g.add(fire)
+  }
+  else if (type === 'wolf') {
+    const s = 1.2
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x696969, roughness: 0.8, flatShading: true })
+    const lightMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.8, flatShading: true })
+    // Body
+    g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(s*0.5,s*0.45,s*1.1), bodyMat), { position: new THREE.Vector3(0,s*0.55,0) }))
+    // Head
+    g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(s*0.35,s*0.3,s*0.4), lightMat), { position: new THREE.Vector3(0,s*0.7,-s*0.6) }))
+    // Snout
+    g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(s*0.2,s*0.15,s*0.25), lightMat), { position: new THREE.Vector3(0,s*0.6,-s*0.82) }))
+    // Ears
+    for (const side of [-1,1]) { const e = new THREE.Mesh(new THREE.ConeGeometry(s*0.07,s*0.2,4), bodyMat); e.position.set(side*s*0.12,s*0.9,-s*0.5); g.add(e) }
+    // Eyes
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0xcccc00, emissive: 0xcccc00, emissiveIntensity: 0.3 })
+    for (const side of [-1,1]) g.add(Object.assign(new THREE.Mesh(new THREE.SphereGeometry(s*0.04,6,6), eyeMat), { position: new THREE.Vector3(side*s*0.12,s*0.75,-s*0.73) }))
+    // Legs
+    for (const side of [-1,1]) for (const fz of [-s*0.3,s*0.3]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(s*0.1,s*0.45,s*0.12), bodyMat); leg.position.set(side*s*0.2,s*0.22,fz); leg.userData.leg=true; g.add(leg) }
+    // Tail
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(s*0.08,s*0.1,s*0.5), bodyMat); tail.position.set(0,s*0.6,s*0.75); tail.rotation.x=0.3; tail.userData.tail=true; g.add(tail)
+  }
+  return g
+}
+
+// Spawn creatures
+const creatureDefs = [
+  { type: 'dinosaur', count: 4, speed: 1.5, chaseSpeed: 4, chaseRange: 30, giveUp: 50 },
+  { type: 'dragon',   count: 3, speed: 2.5, chaseSpeed: 6, chaseRange: 35, giveUp: 55 },
+  { type: 'wolf',     count: 8, speed: 3,   chaseSpeed: 7, chaseRange: 22, giveUp: 40 },
+]
+for (const def of creatureDefs) {
+  for (let i = 0; i < def.count; i++) {
+    const x = (Math.random()-0.5) * 150
+    const z = (Math.random()-0.5) * 150
+    if (Math.abs(x)<10 && Math.abs(z)<10) continue
+    const mesh = buildCreature(def.type)
+    mesh.position.set(x, 0, z)
+    scene.add(mesh)
+    creatureList.push({
+      type: def.type, mesh, x, z,
+      angle: Math.random() * Math.PI * 2,
+      state: 'wander', anim: Math.random() * Math.PI * 2,
+      speed: def.speed, chaseSpeed: def.chaseSpeed,
+      chaseRange: def.chaseRange, giveUp: def.giveUp,
+      homeX: x, homeZ: z,
+      wanderTarget: { x: x + (Math.random()-0.5)*30, z: z + (Math.random()-0.5)*30 },
+      wanderTimer: 120 + Math.random() * 180,
+    })
+  }
+}
+
+function updateCreatures(dt) {
+  const px = carBody.position.x, pz = carBody.position.z
+  for (const c of creatureList) {
+    c.anim += dt * (c.state === 'chase' ? 8 : 4)
+    const dx = px - c.x, dz = pz - c.z
+    const dist = Math.sqrt(dx*dx + dz*dz)
+
+    if (c.state === 'wander' && dist < c.chaseRange) c.state = 'chase'
+    else if (c.state === 'chase' && dist > c.giveUp) {
+      c.state = 'wander'
+      c.wanderTarget = { x: c.x + (Math.random()-0.5)*40, z: c.z + (Math.random()-0.5)*40 }
+      c.wanderTimer = 200
+    }
+
+    if (c.state === 'chase') {
+      const ta = Math.atan2(dx, dz)
+      let ad = ta - c.angle; while(ad>Math.PI)ad-=Math.PI*2; while(ad<-Math.PI)ad+=Math.PI*2
+      c.angle += ad * dt * 5
+      c.x += Math.sin(c.angle) * c.chaseSpeed * dt
+      c.z += Math.cos(c.angle) * c.chaseSpeed * dt
+    } else {
+      c.wanderTimer -= dt * 60
+      if (c.wanderTimer <= 0) {
+        c.wanderTarget = { x: c.homeX + (Math.random()-0.5)*40, z: c.homeZ + (Math.random()-0.5)*40 }
+        c.wanderTimer = 180 + Math.random() * 240
+      }
+      const wx = c.wanderTarget.x - c.x, wz = c.wanderTarget.z - c.z
+      const ta = Math.atan2(wx, wz)
+      let ad = ta - c.angle; while(ad>Math.PI)ad-=Math.PI*2; while(ad<-Math.PI)ad+=Math.PI*2
+      c.angle += ad * dt * 2
+      c.x += Math.sin(c.angle) * c.speed * dt
+      c.z += Math.cos(c.angle) * c.speed * dt
+    }
+    c.x = Math.max(-90, Math.min(90, c.x))
+    c.z = Math.max(-90, Math.min(90, c.z))
+
+    // Dino stomp
+    const stompY = c.type === 'dinosaur' ? Math.abs(Math.sin(c.anim * 1.5)) * 0.3 : 0
+    c.mesh.position.set(c.x, stompY, c.z)
+    c.mesh.rotation.y = c.angle
+
+    // Animate legs/tail/wings
+    const legAnim = Math.sin(c.anim) * 0.3
+    c.mesh.traverse(child => {
+      if (child.userData.leg) child.rotation.x = legAnim * (c.state === 'chase' ? 1 : 0.5)
+      if (child.userData.tail) child.rotation.y = Math.sin(c.anim * 0.7) * 0.4
+      if (child.userData.wing) child.rotation.z = Math.sin(c.anim * 2) * 0.3 * child.userData.side
+      if (child.userData.fire) child.material.opacity = c.state === 'chase' ? 0.6 + Math.sin(c.anim*4)*0.3 : 0
+    })
+  }
 }
 
 // ── Portal rings (static decorations) ──
@@ -779,43 +1010,45 @@ function updateCar(dt) {
     carAngle += steer * turnSpeed * turnFactor * dt * Math.sign(carSpeed)
   }
 
-  // Apply to physics body
-  carBody.quaternion.setFromEuler(0, carAngle, 0)
-  const forward = new CANNON.Vec3(
-    -Math.sin(carAngle) * carSpeed,
-    carBody.velocity.y, // preserve gravity
-    -Math.cos(carAngle) * carSpeed
-  )
-  carBody.velocity.set(forward.x, forward.y, forward.z)
-
-  // Keep car from tipping — force upright orientation
-  carBody.angularVelocity.x *= 0.8
-  carBody.angularVelocity.z *= 0.8
-
-  // Gamepad support
+  // Gamepad — merge into throttle/steer BEFORE applying velocity
   const gp = navigator.getGamepads?.()[0]
   if (gp) {
     const stickX = Math.abs(gp.axes[0]) > 0.15 ? gp.axes[0] : 0
     const rt = gp.buttons[7]?.value || 0
     const lt = gp.buttons[6]?.value || 0
+    const gpBoosting = gp.buttons[0]?.pressed
+    // Triggers are analog 0-1 — scale acceleration by trigger depth (same speed as keyboard)
     if (rt > 0.05 || lt > 0.05) {
-      const gpThrottle = rt - lt
-      const gpAccel = (gp.buttons[0]?.pressed) ? accel * boostMult : accel
-      const gpMax = (gp.buttons[0]?.pressed) ? maxSpeed * 1.8 : maxSpeed
-      if (gpThrottle > 0) carSpeed = Math.min(carSpeed + gpAccel * dt, gpMax)
-      else carSpeed = Math.max(carSpeed - brakeForce * dt, -gpMax * 0.4)
+      const gpEffAccel = gpBoosting ? accel * boostMult : accel
+      const gpEffMax = gpBoosting ? maxSpeed * 1.8 : maxSpeed
+      if (rt > lt) carSpeed = Math.min(carSpeed + gpEffAccel * rt * dt, gpEffMax)
+      else carSpeed = Math.max(carSpeed - brakeForce * lt * dt, -gpEffMax * 0.4)
     }
     if (Math.abs(stickX) > 0 && Math.abs(carSpeed) > 0.5) {
       carAngle -= stickX * turnSpeed * Math.min(1, Math.abs(carSpeed)/8) * dt * Math.sign(carSpeed)
     }
     if (gp.buttons[1]?.pressed) { // B = reset
-      carBody.position.y = 2
+      carBody.position.set(carBody.position.x, 2, carBody.position.z)
       carBody.quaternion.setFromEuler(0, carAngle, 0)
       carBody.velocity.setZero()
       carBody.angularVelocity.setZero()
       carSpeed = 0
     }
   }
+
+  // Apply to physics body
+  carBody.quaternion.setFromEuler(0, carAngle, 0)
+  // Clamp vertical velocity — prevent bounce (only allow gravity, not upward bounce)
+  const vy = Math.min(carBody.velocity.y, 2)
+  carBody.velocity.set(
+    -Math.sin(carAngle) * carSpeed,
+    vy,
+    -Math.cos(carAngle) * carSpeed
+  )
+
+  // Keep car from tipping — force upright orientation
+  carBody.angularVelocity.x *= 0.5
+  carBody.angularVelocity.z *= 0.5
 
   // HUD
   document.getElementById('spd').textContent = Math.floor(Math.abs(carSpeed) * 3.6) + ' km/h'
@@ -899,6 +1132,7 @@ function loop() {
   updateCamera(dt)
   updateTitle()
   updateSpace(dt)
+  updateCreatures(dt)
   checkBounds()
   renderer.render(scene, camera)
 }
