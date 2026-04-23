@@ -991,7 +991,7 @@ function updateCar(dt) {
   // Steering — combine keyboard + gamepad
   const kbLeft = (keys['ArrowLeft'] || keys['KeyA']) ? 1 : 0
   const kbRight = (keys['ArrowRight'] || keys['KeyD']) ? 1 : 0
-  const steerInput = (kbLeft - kbRight) || gpStickX
+  const steerInput = (kbLeft - kbRight) || -gpStickX
 
   if (Math.abs(carSpeed) > 0.5 && Math.abs(steerInput) > 0) {
     const turnFactor = Math.min(1, Math.abs(carSpeed) / 8)
