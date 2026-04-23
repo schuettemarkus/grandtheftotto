@@ -20,56 +20,53 @@ canvas{display:block;position:fixed;top:0;left:0}
 <body>
 <div id="loading">
   <h1>GRAND THEFT OTTO</h1>
-  <canvas id="load-anim" width="300" height="80" style="margin-top:10px"></canvas>
+  <canvas id="load-anim" width="320" height="60" style="margin-top:4px"></canvas>
   <script>
-  // Animated 2D car on loading screen
   (function(){
-    const c = document.getElementById('load-anim')
-    const x = c.getContext('2d')
-    let frame = 0
-    function drawLoad(){
-      if(!c.parentElement || c.parentElement.style.opacity==='0') return
-      x.clearRect(0,0,300,80)
-      // Road
-      x.fillStyle='#444'; x.fillRect(0,55,300,20)
-      x.strokeStyle='#ffcc00'; x.lineWidth=2; x.setLineDash([12,8])
-      x.beginPath(); x.moveTo(0,65); x.lineTo(300,65); x.stroke()
-      x.setLineDash([])
-      // Car position
-      const cx = (frame * 1.5) % 360 - 30
-      // Wheels
-      x.fillStyle='#111'
-      x.beginPath(); x.arc(cx-10,55,5,0,Math.PI*2); x.fill()
-      x.beginPath(); x.arc(cx+12,55,5,0,Math.PI*2); x.fill()
-      x.fillStyle='#888'
-      x.beginPath(); x.arc(cx-10,55,2.5,0,Math.PI*2); x.fill()
-      x.beginPath(); x.arc(cx+12,55,2.5,0,Math.PI*2); x.fill()
-      // Body
-      x.fillStyle='#003399'
-      x.fillRect(cx-16,40,34,15)
-      // Cabin
-      x.fillStyle='#003399'
-      x.beginPath(); x.moveTo(cx-6,40); x.lineTo(cx-2,28); x.lineTo(cx+14,28); x.lineTo(cx+18,40); x.fill()
-      // Windows
-      x.fillStyle='#88bbdd'
-      x.beginPath(); x.moveTo(cx-4,40); x.lineTo(cx,30); x.lineTo(cx+12,30); x.lineTo(cx+16,40); x.fill()
-      // Headlight
-      x.fillStyle='#ffffaa'; x.fillRect(cx+16,43,3,4)
-      // Taillight
-      x.fillStyle='#ff3333'; x.fillRect(cx-17,43,2,4)
-      // Exhaust puffs
+    const c = document.getElementById('load-anim'), x = c.getContext('2d')
+    let f = 0
+    function draw(){
+      if(!c.parentElement||c.parentElement.classList.contains('done')) return
+      x.clearRect(0,0,320,60)
+      // Road — matches background color
+      x.fillStyle='#1a1a2e'; x.fillRect(0,38,320,22)
+      // White dashed center line
+      x.strokeStyle='#ffffff'; x.lineWidth=1.5; x.setLineDash([10,8])
+      x.beginPath(); x.moveTo(0,49); x.lineTo(320,49); x.stroke(); x.setLineDash([])
+      // Pencil-outline car
+      const cx = (f * 1.2) % 380 - 30
+      x.strokeStyle='#aaa'; x.lineWidth=1.5; x.fillStyle='none'
+      // Wheels (outline circles)
+      x.beginPath(); x.arc(cx-10,42,4,0,Math.PI*2); x.stroke()
+      x.beginPath(); x.arc(cx+12,42,4,0,Math.PI*2); x.stroke()
+      // Body outline
+      x.beginPath()
+      x.moveTo(cx-18,38); x.lineTo(cx+20,38); x.lineTo(cx+20,30); x.lineTo(cx-18,30); x.closePath(); x.stroke()
+      // Cabin outline
+      x.beginPath()
+      x.moveTo(cx-8,30); x.lineTo(cx-4,20); x.lineTo(cx+14,20); x.lineTo(cx+18,30); x.stroke()
+      // Window
+      x.beginPath()
+      x.moveTo(cx-2,30); x.lineTo(cx+1,22); x.lineTo(cx+11,22); x.lineTo(cx+14,30); x.stroke()
+      // Exhaust puffs (pencil circles)
       for(let i=0;i<3;i++){
-        const px = cx - 20 - i*8 - Math.sin(frame*0.1+i)*3
-        const py = 50 + Math.cos(frame*0.15+i)*2
-        x.fillStyle=`rgba(180,180,180,${0.3-i*0.1})`
-        x.beginPath(); x.arc(px,py,3+i,0,Math.PI*2); x.fill()
+        const px=cx-22-i*7-Math.sin(f*0.1+i)*2, py=36+Math.cos(f*0.15+i)*1.5
+        x.strokeStyle=`rgba(170,170,170,${0.4-i*0.12})`
+        x.beginPath(); x.arc(px,py,2+i*1.2,0,Math.PI*2); x.stroke()
       }
-      frame++
-      requestAnimationFrame(drawLoad)
+      f++; requestAnimationFrame(draw)
     }
-    drawLoad()
+    draw()
   })()
   </script>
+</div>
+<!-- Options Menu -->
+<div id="opts" style="position:fixed;inset:0;z-index:80;display:none;background:rgba(0,0,0,0.85);font-family:'Segoe UI',sans-serif;color:#fff">
+  <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:380px;background:rgba(30,30,30,0.95);border:1px solid #444;border-radius:12px;padding:28px;text-align:center">
+    <h2 style="color:#ffd700;font-size:1.5rem;margin-bottom:18px;letter-spacing:0.1em">OPTIONS</h2>
+    <div id="opt-list"></div>
+    <button id="opt-resume" style="margin-top:18px;padding:10px 32px;background:#ffd700;color:#111;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:1rem">RESUME</button>
+  </div>
 </div>
 <div id="hud">
   <div class="speed" id="spd">0 km/h</div>
@@ -267,55 +264,66 @@ const trackBlue = new THREE.MeshStandardMaterial({ color: 0x0066ff, emissive: 0x
 const trackYellow = new THREE.MeshStandardMaterial({ color: 0xffcc00, emissive: 0xffaa00, emissiveIntensity: 0.3 })
 
 // Track path — rectangular loop with rounded corners at map edge
-const trackW = 5    // track width
-const trackH = 0.3  // track thickness
+const trackW = 25   // track width (5x wider)
+const trackH = 0.4  // track thickness
 const mapEdge = 92  // distance from center
-const trackElev = 2 // elevation
-const cornerR = 15  // corner radius
+const trackElev = 3 // base elevation
+const cornerR = 20  // corner radius
 const trackSegments = []
 
-// Build track segments as straight sections + curved corners
+// Build track with hills — split into segments with varying Y for undulation
 function addTrackSegment(x, z, len, rotation, elev) {
-  const geo = new THREE.BoxGeometry(trackW, trackH, len)
-  const mesh = new THREE.Mesh(geo, trackOrange)
-  mesh.position.set(x, elev, z)
-  mesh.rotation.y = rotation
-  mesh.castShadow = true
-  mesh.receiveShadow = true
-  scene.add(mesh)
+  const hillSegs = 8 // split each straight into segments for hills
+  const segLen = len / hillSegs
+  for (let i = 0; i < hillSegs; i++) {
+    // Hill pattern — sine wave along the track
+    const hillPhase = (i / hillSegs) * Math.PI * 3
+    const hillY = elev + Math.sin(hillPhase) * 2.5 // hills go up/down 2.5 units
+    const tiltX = Math.cos(hillPhase) * 0.06 // slight tilt on hills
 
-  // Center lane stripe
-  const stripe = new THREE.Mesh(
-    new THREE.BoxGeometry(0.3, trackH + 0.02, len),
-    trackYellow
-  )
-  stripe.position.copy(mesh.position)
-  stripe.position.y += 0.02
-  stripe.rotation.y = rotation
-  scene.add(stripe)
+    const localZ = -len/2 + segLen * (i + 0.5)
+    const dir = new THREE.Vector3(0, 0, localZ)
+    dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), rotation)
 
-  // Guardrails (both sides)
+    const sx = x + dir.x, sz = z + dir.z
+
+    const geo = new THREE.BoxGeometry(trackW, trackH, segLen + 0.5)
+    const mesh = new THREE.Mesh(geo, trackOrange)
+    mesh.position.set(sx, hillY, sz)
+    mesh.rotation.y = rotation
+    mesh.rotation.x = tiltX
+    mesh.receiveShadow = true
+    scene.add(mesh)
+
+    // Physics
+    const body = new CANNON.Body({
+      type: CANNON.Body.STATIC,
+      shape: new CANNON.Box(new CANNON.Vec3(trackW/2, trackH/2, segLen/2 + 0.25)),
+      material: groundMat,
+    })
+    body.position.set(sx, hillY, sz)
+    body.quaternion.setFromEuler(tiltX, rotation, 0)
+    world.addBody(body)
+  }
+
+  // Guardrails (both sides) — single long rail
   for (const side of [-1, 1]) {
     const rail = new THREE.Mesh(
-      new THREE.BoxGeometry(0.2, 0.8, len),
+      new THREE.BoxGeometry(0.5, 1.5, len),
       trackBlue
     )
-    const offset = new THREE.Vector3(side * trackW / 2, 0.3, 0)
+    const offset = new THREE.Vector3(side * trackW / 2, 1, 0)
     offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), rotation)
-    rail.position.set(x + offset.x, elev + 0.3, z + offset.z)
+    rail.position.set(x + offset.x, elev + 1, z + offset.z)
     rail.rotation.y = rotation
     scene.add(rail)
   }
 
-  // Physics — driveable static surface
-  const body = new CANNON.Body({
-    type: CANNON.Body.STATIC,
-    shape: new CANNON.Box(new CANNON.Vec3(trackW/2, trackH/2, len/2)),
-    material: groundMat,
-  })
-  body.position.set(x, elev, z)
-  body.quaternion.setFromEuler(0, rotation, 0)
-  world.addBody(body)
+  // Center stripe
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.5, trackH + 0.05, len), trackYellow)
+  stripe.position.set(x, elev + 0.05, z)
+  stripe.rotation.y = rotation
+  scene.add(stripe)
 }
 
 // Curved corner section
@@ -378,9 +386,9 @@ addTrackCurve(-mapEdge + cornerR, -mapEdge + cornerR, Math.PI, trackElev)      /
 addTrackCurve(-mapEdge + cornerR,  mapEdge - cornerR, Math.PI/2, trackElev)    // SW
 addTrackCurve( mapEdge - cornerR,  mapEdge - cornerR, 0, trackElev)            // SE
 
-// Ramps connecting ground to track (one on each side)
+// Ramps connecting ground to track (wide to match 25-unit track)
 function addTrackRamp(x, z, rotation) {
-  const rampLen = 20
+  const rampLen = 30
   const geo = new THREE.BoxGeometry(trackW, trackH, rampLen)
   const mesh = new THREE.Mesh(geo, trackOrange)
   mesh.castShadow = true
@@ -681,44 +689,78 @@ for (const side of [-1, 1]) {
   titleGroup.add(spot)
 }
 
-// ── CHOCOLATE VOLCANO MOUNTAIN ──
+// ── CHOCOLATE VOLCANO MOUNTAIN — 5x bigger, driveable, auto-superboost ──
 const volcanoGroup = new THREE.Group()
 volcanoGroup.position.set(-55, 0, -55)
 scene.add(volcanoGroup)
+let volcBoostActive = false
 
-// Mountain body — brown cone
-const mtnGeo = new THREE.ConeGeometry(15, 20, 16, 4)
+// Mountain body — giant cone (radius 60, height 80)
+const mtnGeo = new THREE.ConeGeometry(60, 80, 24, 6)
 const mtnMat = new THREE.MeshStandardMaterial({ color: 0x4a3020, roughness: 0.95, flatShading: true })
 const mtn = new THREE.Mesh(mtnGeo, mtnMat)
-mtn.position.y = 10
+mtn.position.y = 40
 mtn.castShadow = true
 volcanoGroup.add(mtn)
 
+// Physics — driveable cone
+const volcBody = new CANNON.Body({
+  type: CANNON.Body.STATIC,
+  shape: new CANNON.Cylinder(5, 60, 80, 16),
+  material: groundMat,
+})
+volcBody.position.set(-55, 40, -55)
+world.addBody(volcBody)
+
+// Giant mud ramps leading up (4 sides)
+const mudMat = new THREE.MeshStandardMaterial({ color: 0x6b4420, roughness: 0.9, flatShading: true })
+for (let i = 0; i < 4; i++) {
+  const angle = (i / 4) * Math.PI * 2
+  const rampGeo = new THREE.BoxGeometry(20, 1, 50)
+  const ramp = new THREE.Mesh(rampGeo, mudMat)
+  const rx = Math.cos(angle) * 45
+  const rz = Math.sin(angle) * 45
+  ramp.position.set(rx, 20, rz)
+  ramp.rotation.y = -angle + Math.PI / 2
+  ramp.rotation.x = -0.35
+  ramp.castShadow = true
+  volcanoGroup.add(ramp)
+  // Physics ramp
+  const rBody = new CANNON.Body({
+    type: CANNON.Body.STATIC,
+    shape: new CANNON.Box(new CANNON.Vec3(10, 0.5, 25)),
+    material: groundMat,
+  })
+  rBody.position.set(-55 + rx, 20, -55 + rz)
+  rBody.quaternion.setFromEuler(-0.35, -angle + Math.PI/2, 0)
+  world.addBody(rBody)
+}
+
 // Crater rim
-const craterGeo = new THREE.TorusGeometry(3, 1.2, 8, 16)
+const craterGeo = new THREE.TorusGeometry(12, 4, 8, 24)
 const craterMat = new THREE.MeshStandardMaterial({ color: 0x3a2010, roughness: 0.9, flatShading: true })
 const crater = new THREE.Mesh(craterGeo, craterMat)
-crater.position.y = 19.5
+crater.position.y = 78
 crater.rotation.x = Math.PI / 2
 volcanoGroup.add(crater)
 
 // Chocolate pool at top
-const poolGeo = new THREE.CircleGeometry(3, 16)
+const poolGeo = new THREE.CircleGeometry(12, 24)
 const poolMat = new THREE.MeshStandardMaterial({ color: 0x3b1a08, roughness: 0.2, metalness: 0.3 })
 const pool = new THREE.Mesh(poolGeo, poolMat)
-pool.position.y = 19.3
+pool.position.y = 77
 pool.rotation.x = -Math.PI / 2
 volcanoGroup.add(pool)
 
 // Chocolate flow streams down the sides
 const flowMat = new THREE.MeshStandardMaterial({ color: 0x4a2510, roughness: 0.15, metalness: 0.4, transparent: true, opacity: 0.85 })
-for (let i = 0; i < 6; i++) {
-  const angle = (i / 6) * Math.PI * 2
-  const flowGeo = new THREE.BoxGeometry(1.2, 18, 0.3)
+for (let i = 0; i < 8; i++) {
+  const angle = (i / 8) * Math.PI * 2
+  const flowGeo = new THREE.BoxGeometry(4, 75, 1)
   const flow = new THREE.Mesh(flowGeo, flowMat.clone())
-  flow.position.set(Math.cos(angle) * 4, 10, Math.sin(angle) * 4)
+  flow.position.set(Math.cos(angle) * 15, 38, Math.sin(angle) * 15)
   flow.rotation.y = -angle
-  flow.rotation.z = 0.15
+  flow.rotation.z = 0.12
   volcanoGroup.add(flow)
 }
 
@@ -740,56 +782,37 @@ for (let i = 0; i < 30; i++) {
   })
 }
 
-// Volcano glow
-const volcGlow = new THREE.PointLight(0xff6633, 2, 30)
-volcGlow.position.set(0, 20, 0)
+// Volcano glow — big
+const volcGlow = new THREE.PointLight(0xff6633, 5, 80)
+volcGlow.position.set(0, 80, 0)
 volcanoGroup.add(volcGlow)
 
-// Volcano physics — static cone for driving up
-const volcBody = new CANNON.Body({
-  type: CANNON.Body.STATIC,
-  shape: new CANNON.Cylinder(1, 15, 20, 12),
-  material: groundMat,
-})
-volcBody.position.set(-55, 10, -55)
-world.addBody(volcBody)
-
 function updateVolcano(dt) {
-  // Eruption particles
+  // Eruption particles (bigger scale)
   for (const p of chocoParticles) {
     p.life -= dt
     if (p.life <= 0) {
-      // Reset — erupt from crater
-      p.mesh.position.set(
-        (Math.random()-0.5) * 2,
-        19.5,
-        (Math.random()-0.5) * 2
-      )
-      p.vx = (Math.random()-0.5) * 4
-      p.vy = 4 + Math.random() * 7
-      p.vz = (Math.random()-0.5) * 4
-      p.life = p.maxLife
-      p.mesh.material.opacity = 1
-      p.mesh.visible = true
+      p.mesh.position.set((Math.random()-0.5)*8, 78, (Math.random()-0.5)*8)
+      p.vx = (Math.random()-0.5)*8; p.vy = 8+Math.random()*12; p.vz = (Math.random()-0.5)*8
+      p.life = p.maxLife; p.mesh.material.opacity = 1; p.mesh.visible = true
+      p.mesh.scale.setScalar(1+Math.random()*2)
     }
-    p.mesh.position.x += p.vx * dt
-    p.mesh.position.y += p.vy * dt
-    p.mesh.position.z += p.vz * dt
-    p.vy -= 12 * dt // gravity
-    // Fade out as they fall
-    const t = p.life / p.maxLife
-    p.mesh.material.opacity = t
-    p.mesh.material.transparent = true
-    // Evaporate — shrink when below y=5
-    if (p.mesh.position.y < 5) {
-      p.mesh.scale.setScalar(Math.max(0.1, p.mesh.position.y / 5))
-    }
-    if (p.mesh.position.y < 0.5) p.life = 0 // kill at ground
+    p.mesh.position.x += p.vx*dt; p.mesh.position.y += p.vy*dt; p.mesh.position.z += p.vz*dt
+    p.vy -= 15*dt
+    p.mesh.material.opacity = p.life/p.maxLife; p.mesh.material.transparent = true
+    if (p.mesh.position.y < 10) p.mesh.scale.setScalar(Math.max(0.1, p.mesh.position.y/10))
+    if (p.mesh.position.y < 1) p.life = 0
   }
-  // Pulsing glow
-  volcGlow.intensity = 1.5 + Math.sin(performance.now() * 0.003) * 0.8
-  // Pool bubbles — wobble the pool
-  pool.rotation.z = Math.sin(performance.now() * 0.005) * 0.05
+  volcGlow.intensity = 3 + Math.sin(performance.now()*0.003)*2
+  pool.rotation.z = Math.sin(performance.now()*0.005)*0.05
+
+  // Auto-superboost when driving up the volcano
+  const dx = carBody.position.x - (-55), dz = carBody.position.z - (-55)
+  const volcDist = Math.sqrt(dx*dx + dz*dz)
+  volcBoostActive = volcDist < 70 && carBody.position.y > 5
+  if (volcBoostActive && carSpeed > 0) {
+    carSpeed = Math.min(carSpeed * 1.02 + 0.5, maxSpeed * 3) // superboost up the volcano
+  }
 }
 
 // ── Strategic jump ramps ──
@@ -858,15 +881,15 @@ function addBerm(x, z, radius, height) {
   body.position.set(x, -radius + height, z)
   world.addBody(body)
 }
-// Berm cluster — creates a rolling terrain section
-addBerm(30, 30, 5, 1.5)
-addBerm(35, 35, 3, 1.0)
-addBerm(-30, -30, 6, 2.0)
-addBerm(-35, -25, 4, 1.2)
-addBerm(0, 35, 4, 1.3)
-addBerm(-40, 40, 5, 1.5)
-addBerm(45, -35, 3, 0.8)
-addBerm(20, -50, 5, 1.8)
+// Giant berms — 10x bigger, driveable rolling hills
+addBerm(30, 30, 25, 10)
+addBerm(40, 45, 18, 7)
+addBerm(-30, -30, 30, 12)
+addBerm(-40, -20, 20, 8)
+addBerm(0, 45, 22, 9)
+addBerm(-50, 50, 25, 10)
+addBerm(55, -40, 18, 6)
+addBerm(20, -55, 28, 11)
 
 // ── Creatures — purely visual, no physics interaction ──
 const creatureList = []
@@ -1072,8 +1095,172 @@ for (let i = 0; i < 40; i++) {
 // INPUT
 // ════════════════════════════════════════════════════════════
 const keys = {}
-window.addEventListener('keydown', e => { keys[e.code] = true })
+let menuOpen = false
+let optSel = 0 // selected menu option index for Xbox nav
+const opts = { creatures: true, sound: false, powerups: true, location: 0 }
+const locNames = ['Grassland', 'Desert', 'Snow', 'Neon City']
+const locColors = [0x559944, 0xd2b48c, 0xeeeeff, 0x333344]
+
+// Build options menu DOM
+function buildOptMenu() {
+  const list = document.getElementById('opt-list')
+  list.innerHTML = ''
+  const items = [
+    { label: 'Creatures', key: 'creatures', val: opts.creatures ? 'ON' : 'OFF' },
+    { label: 'Sound', key: 'sound', val: opts.sound ? 'ON' : 'OFF' },
+    { label: 'Powerups', key: 'powerups', val: opts.powerups ? 'ON' : 'OFF' },
+    { label: 'Location', key: 'location', val: locNames[opts.location] },
+  ]
+  items.forEach((it, idx) => {
+    const row = document.createElement('div')
+    row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #333'
+    if (idx === optSel) row.style.background = 'rgba(255,215,0,0.1)'
+    const sel = idx === optSel ? ' style="color:#ffd700;font-size:1.1rem"' : ''
+    row.innerHTML = `<span${sel}>${idx === optSel ? '► ' : ''}${it.label}</span>
+      <button onclick="toggleOpt('${it.key}')" style="background:${it.val==='ON'||it.key==='location'?'#ffd700':'#333'};color:${it.val==='ON'||it.key==='location'?'#111':'#fff'};border:1px solid #555;padding:5px 14px;border-radius:4px;cursor:pointer;font-size:0.85rem">${it.val}</button>`
+    list.appendChild(row)
+  })
+}
+window.toggleOpt = function(key) {
+  if (key === 'location') { opts.location = (opts.location + 1) % locNames.length; floor.material.color.setHex(locColors[opts.location]) }
+  else opts[key] = !opts[key]
+  // Apply creature visibility
+  if (key === 'creatures') creatureList.forEach(c => c.mesh.visible = opts.creatures)
+  // Apply powerup visibility
+  if (key === 'powerups') powerupMeshes.forEach(p => { if(!p.collected) p.mesh.visible = opts.powerups })
+  buildOptMenu()
+}
+
+document.getElementById('opt-resume').onclick = () => { menuOpen = false; document.getElementById('opts').style.display = 'none' }
+
+window.addEventListener('keydown', e => {
+  keys[e.code] = true
+  if (e.code === 'Escape') {
+    menuOpen = !menuOpen
+    document.getElementById('opts').style.display = menuOpen ? 'block' : 'none'
+    if (menuOpen) buildOptMenu()
+  }
+})
 window.addEventListener('keyup', e => { keys[e.code] = false })
+
+// ════════════════════════════════════════════════════════════
+// POWERUPS — scattered collectible spheres
+// ════════════════════════════════════════════════════════════
+const powerupMeshes = []
+const puTypes = [
+  { name: 'SPEED BOOST', color: 0x00ccff, emissive: 0x0088ff, effect: 'speed', duration: 5 },
+  { name: 'MEGA JUMP', color: 0xff44ff, emissive: 0xcc00cc, effect: 'jump', duration: 0 },
+  { name: 'GIANT MODE', color: 0x44ff44, emissive: 0x00cc00, effect: 'giant', duration: 6 },
+  { name: 'COIN x10', color: 0xffd700, emissive: 0xffaa00, effect: 'coins', duration: 0 },
+]
+let activePU = null, puTimer = 0, coinCount = 0
+const puToast = document.createElement('div')
+puToast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);color:#fff;font:bold 1.2rem monospace;text-shadow:0 0 10px #000;pointer-events:none;z-index:10;opacity:0;transition:opacity 0.3s'
+document.body.appendChild(puToast)
+
+for (let i = 0; i < 25; i++) {
+  const t = puTypes[i % puTypes.length]
+  const x = (Math.random()-0.5) * 160, z = (Math.random()-0.5) * 160
+  if (Math.abs(x)<8 && Math.abs(z)<8) continue
+  const geo = new THREE.SphereGeometry(0.8, 12, 12)
+  const mat = new THREE.MeshStandardMaterial({ color: t.color, emissive: t.emissive, emissiveIntensity: 1, transparent: true, opacity: 0.85 })
+  const mesh = new THREE.Mesh(geo, mat)
+  mesh.position.set(x, 1.5, z)
+  scene.add(mesh)
+  const light = new THREE.PointLight(t.color, 0.5, 5)
+  light.position.y = 0.5
+  mesh.add(light)
+  powerupMeshes.push({ mesh, type: t, x, z, collected: false, bob: Math.random()*Math.PI*2 })
+}
+
+function updatePowerups(dt) {
+  if (!opts.powerups) return
+  const px = carBody.position.x, pz = carBody.position.z
+  for (const p of powerupMeshes) {
+    if (p.collected) continue
+    p.bob += dt * 3
+    p.mesh.position.y = 1.5 + Math.sin(p.bob) * 0.4
+    p.mesh.rotation.y += dt * 2
+    const dx = px - p.x, dz = pz - p.z
+    if (dx*dx+dz*dz < 9) {
+      p.collected = true; p.mesh.visible = false
+      puToast.textContent = p.type.name + '!'
+      puToast.style.color = '#'+p.type.color.toString(16).padStart(6,'0')
+      puToast.style.opacity = '1'
+      setTimeout(() => puToast.style.opacity = '0', 2000)
+      if (p.type.effect === 'speed') { activePU = 'speed'; puTimer = 5 }
+      else if (p.type.effect === 'jump') carBody.velocity.y = 25 // instant mega jump
+      else if (p.type.effect === 'giant') { activePU = 'giant'; puTimer = 6; carGroup.scale.setScalar(3) }
+      else if (p.type.effect === 'coins') coinCount += 10
+    }
+  }
+  if (puTimer > 0) { puTimer -= dt; if (puTimer <= 0) { activePU = null; carGroup.scale.setScalar(1) } }
+}
+
+// ════════════════════════════════════════════════════════════
+// 3 KID-FRIENDLY FEATURES
+// ════════════════════════════════════════════════════════════
+
+// Feature 1: FIREWORKS on horn (H key) — burst of colorful particles
+const fireworks = []
+function spawnFireworks() {
+  for (let i = 0; i < 40; i++) {
+    const geo = new THREE.SphereGeometry(0.15, 4, 4)
+    const colors = [0xff0000, 0x00ff00, 0x0088ff, 0xffff00, 0xff00ff, 0xff8800]
+    const mat = new THREE.MeshBasicMaterial({ color: colors[Math.floor(Math.random()*colors.length)] })
+    const m = new THREE.Mesh(geo, mat)
+    m.position.copy(carBody.position)
+    m.position.y += 3
+    scene.add(m)
+    fireworks.push({
+      mesh: m, life: 1.5 + Math.random(),
+      vx: (Math.random()-0.5)*15, vy: 8+Math.random()*10, vz: (Math.random()-0.5)*15
+    })
+  }
+}
+function updateFireworks(dt) {
+  for (let i = fireworks.length-1; i >= 0; i--) {
+    const f = fireworks[i]
+    f.life -= dt
+    f.mesh.position.x += f.vx*dt; f.mesh.position.y += f.vy*dt; f.mesh.position.z += f.vz*dt
+    f.vy -= 12*dt
+    f.mesh.material.opacity = Math.max(0, f.life)
+    f.mesh.material.transparent = true
+    if (f.life <= 0) { scene.remove(f.mesh); fireworks.splice(i, 1) }
+  }
+}
+
+// Feature 2: TURBO TRAIL — colorful ribbon behind car at high speed
+const trailParts = []
+function updateTrail(dt) {
+  if (Math.abs(carSpeed) > 10) {
+    const geo = new THREE.SphereGeometry(0.2, 4, 4)
+    const hue = (performance.now() * 0.001) % 1
+    const color = new THREE.Color().setHSL(hue, 1, 0.5)
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8 })
+    const m = new THREE.Mesh(geo, mat)
+    m.position.copy(carBody.position); m.position.y += 0.3
+    scene.add(m)
+    trailParts.push({ mesh: m, life: 1.5 })
+  }
+  for (let i = trailParts.length-1; i >= 0; i--) {
+    trailParts[i].life -= dt
+    trailParts[i].mesh.material.opacity = trailParts[i].life / 1.5
+    trailParts[i].mesh.scale.setScalar(trailParts[i].life)
+    if (trailParts[i].life <= 0) { scene.remove(trailParts[i].mesh); trailParts.splice(i, 1) }
+  }
+}
+
+// Feature 3: COIN COUNTER + CELEBRATION at milestones
+const coinHud = document.createElement('div')
+coinHud.style.cssText = 'position:fixed;top:20px;left:20px;color:#ffd700;font:bold 1.3rem monospace;pointer-events:none;z-index:10'
+coinHud.textContent = 'Coins: 0'
+document.body.appendChild(coinHud)
+function updateCoins() {
+  coinHud.textContent = 'Coins: ' + coinCount
+  // Milestone celebrations
+  if (coinCount > 0 && coinCount % 25 === 0) spawnFireworks()
+}
 
 // ════════════════════════════════════════════════════════════
 // CAR DRIVING — direct velocity control (no RaycastVehicle)
@@ -1096,9 +1283,9 @@ function updateCar(dt) {
     carBody.quaternion.setFromEuler(0, carAngle, 0)
     carBody.velocity.setZero()
     carBody.angularVelocity.setZero()
-    carSpeed = 0
-    return
+    carSpeed = 0; return
   }
+  if (keys['KeyH'] && !keys._hornCd) { keys._hornCd=true; spawnFireworks(); setTimeout(()=>keys._hornCd=false,500) }
 
   // Only drive if car is roughly upright
   if (up.y < 0.5) return
@@ -1109,8 +1296,9 @@ function updateCar(dt) {
   const throttle = fwd - rev
   const boosting = keys['Space']
 
-  const effectiveAccel = boosting ? accel * boostMult : accel
-  const effectiveMax = boosting ? maxSpeed * 1.8 : maxSpeed
+  const speedMul = activePU === 'speed' ? 2 : 1
+  const effectiveAccel = (boosting ? accel * boostMult : accel) * speedMul
+  const effectiveMax = (boosting ? maxSpeed * 1.8 : maxSpeed) * speedMul
 
   if (throttle > 0) {
     carSpeed = Math.min(carSpeed + effectiveAccel * dt, effectiveMax)
@@ -1152,19 +1340,33 @@ function updateCar(dt) {
     if (gp.buttons[1]?.pressed) { // B = reset
       carBody.position.set(carBody.position.x, 2, carBody.position.z)
       carBody.quaternion.setFromEuler(0, carAngle, 0)
-      carBody.velocity.setZero()
-      carBody.angularVelocity.setZero()
-      carSpeed = 0
+      carBody.velocity.setZero(); carBody.angularVelocity.setZero(); carSpeed = 0
+    }
+    if (gp.buttons[3]?.pressed && !keys._gpHorn) { keys._gpHorn=true; spawnFireworks(); setTimeout(()=>keys._gpHorn=false,500) } // Y = fireworks
+    // Start = toggle menu
+    if (gp.buttons[9]?.pressed && !keys._gpStart) {
+      keys._gpStart=true
+      menuOpen=!menuOpen; document.getElementById('opts').style.display=menuOpen?'block':'none'
+      if(menuOpen) buildOptMenu()
+      setTimeout(()=>keys._gpStart=false,300)
+    }
+    // Menu navigation with D-pad / A button when menu open
+    if (menuOpen) {
+      if (gp.buttons[12]?.pressed && !keys._gpUp) { keys._gpUp=true; optSel=Math.max(0,optSel-1); buildOptMenu(); setTimeout(()=>keys._gpUp=false,200) }
+      if (gp.buttons[13]?.pressed && !keys._gpDn) { keys._gpDn=true; optSel=Math.min(3,optSel+1); buildOptMenu(); setTimeout(()=>keys._gpDn=false,200) }
+      if (gp.buttons[0]?.pressed && !keys._gpA) { // A = toggle selected option
+        keys._gpA=true
+        toggleOpt(['creatures','sound','powerups','location'][optSel])
+        setTimeout(()=>keys._gpA=false,250)
+      }
     }
   }
 
   // Apply to physics body
   carBody.quaternion.setFromEuler(0, carAngle, 0)
-  // Clamp vertical velocity — prevent bounce (only allow gravity, not upward bounce)
-  const vy = Math.min(carBody.velocity.y, 2)
   carBody.velocity.set(
     -Math.sin(carAngle) * carSpeed,
-    vy,
+    carBody.velocity.y, // preserve gravity and jump velocity
     -Math.cos(carAngle) * carSpeed
   )
 
@@ -1277,7 +1479,7 @@ function updateIntro(dt) {
 // ════════════════════════════════════════════════════════════
 function checkBounds() {
   const p = carBody.position
-  if (Math.abs(p.x) > 95 || Math.abs(p.z) > 95 || p.y < -5) {
+  if (Math.abs(p.x) > 130 || Math.abs(p.z) > 130 || p.y < -10) {
     carBody.position.set(0, 2, 0)
     carBody.velocity.setZero()
     carBody.angularVelocity.setZero()
@@ -1329,9 +1531,15 @@ function loop() {
   updateCamera(dt)
   updateTitle()
   updateSpace(dt)
-  updateCreatures(dt)
+  if (opts.creatures) updateCreatures(dt)
   updateVolcano(dt)
+  updatePowerups(dt)
+  updateFireworks(dt)
+  updateTrail(dt)
+  updateCoins()
   checkBounds()
+
+  if (menuOpen) { renderer.render(scene, camera); return } // still render but don't process input further
   renderer.render(scene, camera)
 }
 
