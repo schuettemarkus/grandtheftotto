@@ -236,6 +236,14 @@ document.addEventListener('click', _startAudio)
 document.addEventListener('keydown', _startAudio)
 
 // ════════════════════════════════════════════════════════════
+// REUSABLE TEMP OBJECTS — avoid per-frame allocations
+// ════════════════════════════════════════════════════════════
+const _tv1 = new THREE.Vector3(), _tv2 = new THREE.Vector3(), _tv3 = new THREE.Vector3()
+const _tv4 = new THREE.Vector3(), _tv5 = new THREE.Vector3()
+const _tm1 = new THREE.Matrix4()
+const _tq1 = new THREE.Quaternion()
+
+// ════════════════════════════════════════════════════════════
 // SCENE, CAMERA, RENDERER
 // ════════════════════════════════════════════════════════════
 const scene = new THREE.Scene()
@@ -249,7 +257,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true })
 renderer.setSize(innerWidth, innerHeight)
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
 renderer.shadowMap.enabled = true
-renderer.shadowMap.type = THREE.PCFSoftShadowMap
+renderer.shadowMap.type = THREE.BasicShadowMap // fastest shadow type
 renderer.toneMapping = THREE.ACESFilmicToneMapping
 renderer.toneMappingExposure = 1.1
 document.body.appendChild(renderer.domElement)
@@ -270,7 +278,7 @@ sun.castShadow = true
 sun.shadow.camera.left = -50; sun.shadow.camera.right = 50
 sun.shadow.camera.top = 50; sun.shadow.camera.bottom = -50
 sun.shadow.camera.far = 120
-sun.shadow.mapSize.set(2048, 2048)
+sun.shadow.mapSize.set(1024, 1024)
 scene.add(sun)
 
 // ════════════════════════════════════════════════════════════
@@ -420,7 +428,7 @@ let inNovaLand = false
 
 // ── Nova Land sky — fluffy clouds (hidden until entering zone) ──
 const novaClouds = []
-for (let i = 0; i < 15; i++) {
+for (let i = 0; i < 8; i++) {
   const size = 30 + Math.random() * 50
   const cloud = new THREE.Mesh(
     new THREE.SphereGeometry(size * 0.4, 8, 6),
@@ -514,23 +522,19 @@ function addPlanet(x, y, z, radius, color, ringColor, name) {
     ring.rotation.x = Math.PI * 0.35
     scene.add(ring)
   }
-  // Atmosphere glow
+  // Atmosphere + portal created lazily (not added to scene until space mode)
   const atmo = new THREE.Mesh(
-    new THREE.SphereGeometry(radius * 1.15, 24, 24),
+    new THREE.SphereGeometry(radius * 1.15, 16, 16),
     new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.08, side: THREE.BackSide })
   )
   atmo.position.copy(planet.position)
-  scene.add(atmo)
-  // Return portal on surface (glowing ring)
   const portal = new THREE.Mesh(
     new THREE.TorusGeometry(3, 0.3, 8, 32),
     new THREE.MeshStandardMaterial({ color: 0x00ffaa, emissive: 0x00ffaa, emissiveIntensity: 3 })
   )
-  // Place portal on "north pole" of planet
   portal.position.set(x, y + radius + 0.5, z)
   portal.rotation.x = Math.PI / 2
-  scene.add(portal)
-  const pd = { mesh: planet, ring, atmo, portal, pos: new THREE.Vector3(x, y, z), radius, color, name, discovered: false }
+  const pd = { mesh: planet, ring, atmo, portal, pos: new THREE.Vector3(x, y, z), radius, color, name, discovered: false, _loaded: false }
   planetData.push(pd)
   return planet
 }
@@ -542,7 +546,8 @@ const planets = [
   addPlanet(0, 600, -900, 36, 0x88ffaa, null, 'Emerald Moon'),
 ]
 
-// Nebula glow clouds
+// Nebula glow clouds (cached refs for perf — no scene.traverse needed)
+const nebulaMeshes = []
 for (let i = 0; i < 4; i++) {
   const nebula = new THREE.Mesh(
     new THREE.SphereGeometry(30 + Math.random() * 50, 8, 8),
@@ -555,6 +560,7 @@ for (let i = 0; i < 4; i++) {
   const r = 400 + Math.random() * 300
   nebula.position.set(Math.cos(a) * r, (Math.random() - 0.5) * 400, Math.sin(a) * r)
   scene.add(nebula)
+  nebulaMeshes.push(nebula)
 }
 
 // Meteors — animated streaks
@@ -582,8 +588,7 @@ function updateSpace(dt) {
   // Slowly rotate planets
   for (const pd of planetData) {
     pd.mesh.rotation.y += dt * 0.05
-    // Pulse atmosphere
-    pd.atmo.material.opacity = 0.06 + Math.sin(performance.now() * 0.001 + pd.radius) * 0.02
+    if (pd._loaded) pd.atmo.material.opacity = 0.06 + Math.sin(performance.now() * 0.001 + pd.radius) * 0.02
   }
 
   // Animate meteors
@@ -679,12 +684,14 @@ for (const s of [-1, 1]) {
   carGroup.add(post)
 }
 
-// Headlights
+// Headlights (cached refs for day/night perf)
 const hlMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffcc, emissiveIntensity: 2 })
+const _cachedHeadlights = []
 for (const s of [-1, 1]) {
   const hl = new THREE.Mesh(new THREE.BoxGeometry(carW * 0.2, carH * 0.15, 0.06), hlMat)
   hl.position.set(s * carW * 0.35, 0, -carL * 0.5)
   carGroup.add(hl)
+  _cachedHeadlights.push(hl)
 }
 
 // Taillights
@@ -1223,19 +1230,17 @@ for (let i = 0; i < 36; i++) {
     new THREE.MeshStandardMaterial({ color: 0x6b3a1a, roughness: 0.9 })
   )
   trunk.position.set(x, groundY + trunkH / 2, z)
-  trunk.castShadow = true
   scene.add(trunk)
   const canopy = new THREE.Mesh(
     new THREE.SphereGeometry(3 + Math.random() * 2, 8, 6),
     new THREE.MeshStandardMaterial({ color: 0x2d5a1e, roughness: 0.8, flatShading: true })
   )
   canopy.position.set(x, groundY + trunkH + 1.5, z)
-  canopy.castShadow = true
   scene.add(canopy)
   treePositions.push([x, z])
 }
 
-// ── Streetlights — lantern posts that glow at night ──
+// ── Streetlights — emissive-only glow (no PointLights for perf) ──
 const streetlights = []
 const slPostMat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.8, metalness: 0.4 })
 const slLanternMat = new THREE.MeshStandardMaterial({ color: 0xffeecc, emissive: 0xffddaa, emissiveIntensity: 0, roughness: 0.3 })
@@ -1245,23 +1250,16 @@ for (let i = 0; i < 24; i++) {
   const x = Math.cos(angle) * radius
   const z = Math.sin(angle) * radius
   const groundY = terrainNoise(x, z) * Math.max(0, Math.min(1, (Math.sqrt(x*x+z*z) - 30) / 30))
-  // Post
   const post = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 5, 6), slPostMat)
   post.position.set(x, groundY + 2.5, z)
   scene.add(post)
-  // Arm
   const arm = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.1, 0.1), slPostMat)
   arm.position.set(x + 0.75, groundY + 5, z)
   scene.add(arm)
-  // Lantern
   const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.3, 6, 6), slLanternMat.clone())
   lantern.position.set(x + 1.5, groundY + 4.8, z)
   scene.add(lantern)
-  // Point light (dim, only visible at night)
-  const light = new THREE.PointLight(0xffddaa, 0, 15)
-  light.position.set(x + 1.5, groundY + 4.5, z)
-  scene.add(light)
-  streetlights.push({ lantern, light })
+  streetlights.push({ lantern })
 }
 
 // ── Nova Land trees — cherry blossoms (pink canopies) ──
@@ -1275,19 +1273,18 @@ for (let i = 0; i < 30; i++) {
     new THREE.MeshStandardMaterial({ color: 0x8b6b4a, roughness: 0.9 })
   )
   trunk.position.set(x, groundY + trunkH / 2, z)
-  trunk.castShadow = true
   scene.add(trunk)
   const canopy = new THREE.Mesh(
     new THREE.SphereGeometry(3 + Math.random() * 2, 8, 6),
     new THREE.MeshStandardMaterial({ color: 0xffb7c5, roughness: 0.7, flatShading: true })
   )
   canopy.position.set(x, groundY + trunkH + 1.5, z)
-  canopy.castShadow = true
   scene.add(canopy)
   treePositions.push([x, z])
 }
 
-// ── Nova Land streetlights (white/pink glow) ──
+// ── Nova Land streetlights (emissive-only, no PointLights) ──
+const novaSlPostMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.5 })
 const novaSlMat = new THREE.MeshStandardMaterial({ color: 0xffeef5, emissive: 0xffbbdd, emissiveIntensity: 0, roughness: 0.3 })
 for (let i = 0; i < 16; i++) {
   const angle = (i / 16) * Math.PI * 2
@@ -1295,19 +1292,16 @@ for (let i = 0; i < 16; i++) {
   const x = Math.cos(angle) * radius
   const z = -400 + Math.sin(angle) * radius
   const groundY = terrainNoise(x, z) * 0.5
-  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 5, 6), new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.5 }))
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 5, 6), novaSlPostMat)
   post.position.set(x, groundY + 2.5, z)
   scene.add(post)
-  const arm = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.1, 0.1), new THREE.MeshStandardMaterial({ color: 0xdddddd }))
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.1, 0.1), novaSlPostMat)
   arm.position.set(x + 0.75, groundY + 5, z)
   scene.add(arm)
   const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.3, 6, 6), novaSlMat.clone())
   lantern.position.set(x + 1.5, groundY + 4.8, z)
   scene.add(lantern)
-  const light = new THREE.PointLight(0xffccee, 0, 15)
-  light.position.set(x + 1.5, groundY + 4.5, z)
-  scene.add(light)
-  streetlights.push({ lantern, light })
+  streetlights.push({ lantern })
 }
 
 // ── Nova Land powerups ──
@@ -2007,8 +2001,10 @@ function drawMinimap() {
   ctx.restore()
 }
 
+let _minimapFrame = 0
 function updateHUD(dt) {
-  drawMinimap()
+  _minimapFrame++
+  if (_minimapFrame % 3 === 0) drawMinimap() // draw every 3rd frame
   const actualMph = Math.abs(carSpeed) * 2.237
   // Smooth needle
   displayedMph += (actualMph - displayedMph) * Math.min(1, dt * 12)
@@ -2167,7 +2163,7 @@ function updateTitle() {
   // Gentle float
   titleGroup.position.y = 12 + Math.sin(performance.now() * 0.001) * 0.5
   // Fade when player drives away
-  const dist = new THREE.Vector3().copy(carBody.position).length()
+  const dist = _tv1.copy(carBody.position).length()
   const fade = Math.max(0, 1 - dist / 35)
   titleMesh.material.opacity = fade
   backGlow.material.opacity = fade * 0.08
@@ -2254,17 +2250,18 @@ for (let i = 0; i < 5; i++) {
   auroraCurtains.push({ mesh: curtain, phase: Math.random() * Math.PI * 2, speed: 0.3 + Math.random() * 0.4 })
 }
 
+let _auroraFrame = 0
 function updateAurora(dt) {
+  _auroraFrame++
+  if (_auroraFrame % 4 !== 0) return // update every 4th frame
   for (const a of auroraCurtains) {
-    a.phase += dt * a.speed
-    // Undulate the vertices for a shimmering curtain effect
+    a.phase += dt * 4 * a.speed // compensate for skipped frames
     const pos = a.mesh.geometry.attributes.position
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i)
       pos.setY(i, pos.getY(i) + Math.sin(a.phase + x * 0.05) * 0.15)
     }
     pos.needsUpdate = true
-    // Pulse opacity
     a.mesh.material.opacity = 0.04 + Math.sin(a.phase * 0.7) * 0.025
   }
 }
@@ -2273,14 +2270,14 @@ function updateAurora(dt) {
 // FEATURE: WARP TUNNEL — edge-of-screen streaking lines
 // ════════════════════════════════════════════════════════════
 const warpLines = []
-for (let i = 0; i < 40; i++) {
+for (let i = 0; i < 24; i++) {
   const len = 4 + Math.random() * 8
   const geo = new THREE.BoxGeometry(0.05, 0.05, len)
   const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 })
   const line = new THREE.Mesh(geo, mat)
   line.visible = false
   scene.add(line)
-  const theta = (i / 40) * Math.PI * 2 + Math.random() * 0.15 // spread around ring
+  const theta = (i / 24) * Math.PI * 2 + Math.random() * 0.15
   const radius = 8 + Math.random() * 5 // distance from camera center (screen edges)
   warpLines.push({
     mesh: line, theta, radius, len,
@@ -2295,25 +2292,23 @@ function updateWarpLines(dt) {
   const active = (spd > 25 && boosting) || spaceMode || _approachingPlanet
   const intensity = spaceMode ? 1 : (spd > 25 ? Math.min(1, (spd - 25) / 20) : (_approachingPlanet ? 0.7 : 0))
 
+  // Compute camera axes once outside loop (not per-line)
+  const wFwd = _tv1.set(0, 0, -1).applyQuaternion(camera.quaternion)
+  const wRight = _tv2.set(1, 0, 0).applyQuaternion(camera.quaternion)
+  const wUp = _tv3.set(0, 1, 0).applyQuaternion(camera.quaternion)
+
   for (const w of warpLines) {
     w.mesh.visible = active
     if (!active) continue
-    // Stream along camera forward direction, arranged in cylinder at screen edges
     w.z -= w.speed * dt * (spaceMode ? 1.5 : 1)
     if (w.z < -12) w.z = 12 + Math.random() * 15
 
-    // Position in camera-local cylinder
     const cx = Math.cos(w.theta) * w.radius
     const cy = Math.sin(w.theta) * w.radius
-    // Transform to world space using camera orientation
-    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion)
-    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion)
-    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion)
-
     w.mesh.position.copy(camera.position)
-      .add(fwd.clone().multiplyScalar(w.z))
-      .add(right.clone().multiplyScalar(cx))
-      .add(up.clone().multiplyScalar(cy))
+      .addScaledVector(wFwd, w.z)
+      .addScaledVector(wRight, cx)
+      .addScaledVector(wUp, cy)
     w.mesh.quaternion.copy(camera.quaternion)
 
     const alpha = intensity * 0.5
@@ -2365,13 +2360,18 @@ function checkBounds() {
 
 function enterSpaceMode() {
   spaceMode = true
-  // Preserve current orientation as initial space orientation
   spacePitch = 0
   spaceYaw = carAngle
-  // Disable cannon gravity on car (we'll do custom gravity)
   carBody.type = CANNON.Body.KINEMATIC
-  // Deploy super glider
   deploySuperGlider()
+  // Lazy-load planet atmospheres + portals on first space entry
+  for (const pd of planetData) {
+    if (!pd._loaded) {
+      pd._loaded = true
+      scene.add(pd.atmo)
+      scene.add(pd.portal)
+    }
+  }
 }
 
 function exitSpaceMode() {
@@ -2526,38 +2526,24 @@ function updateDayNight(dt) {
   const starOpacity = Math.max(0, 1 - dayFactor * 3)
   starMat.opacity = starOpacity * 0.9
 
-  // Headlight intensity — brighter at night
+  // Headlight intensity — brighter at night (using cached refs)
   const headlightIntensity = 1 + (1 - dayFactor) * 3
-  carGroup.traverse(child => {
-    if (child.isMesh && child.material && child.material.emissive &&
-        child.material.emissiveIntensity !== undefined && child.material.color &&
-        child.material.color.getHex() === 0xffffff && child.material.emissive.getHex() === 0xffffcc) {
-      child.material.emissiveIntensity = headlightIntensity
-    }
-  })
+  for (const hl of _cachedHeadlights) hl.material.emissiveIntensity = headlightIntensity
 
-  // Streetlights — on at night, off during day
+  // Streetlights — emissive glow at night
   const nightFactor = Math.max(0, 1 - dayFactor * 2.5)
   for (const sl of streetlights) {
-    sl.lantern.material.emissiveIntensity = nightFactor * 2
-    sl.light.intensity = nightFactor * 1.5
+    sl.lantern.material.emissiveIntensity = nightFactor * 2.5
   }
 
-  // Planet glow — brighter at night for visible landmarks in space
+  // Planet glow — brighter at night
   for (const pd of planetData) {
     pd.mesh.material.emissiveIntensity = 0.1 + nightFactor * 0.3
-    pd.atmo.material.opacity = 0.06 + nightFactor * 0.08
+    if (pd._loaded) pd.atmo.material.opacity = 0.06 + nightFactor * 0.08
   }
 
-  // Nebula glow brighter at night
-  scene.traverse(child => {
-    if (child.isMesh && child.material && child.material.opacity < 0.1 && child.material.opacity > 0.01 &&
-        child.geometry?.type === 'SphereGeometry' && child.material.side === THREE.DoubleSide &&
-        !child.material.emissive) {
-      // Nebula meshes
-      child.material.opacity = 0.04 + nightFactor * 0.06
-    }
-  })
+  // Nebula glow brighter at night (cached refs)
+  for (const neb of nebulaMeshes) neb.material.opacity = 0.04 + nightFactor * 0.06
 
   // Tone mapping exposure
   renderer.toneMappingExposure = 0.6 + dayFactor * 0.7
