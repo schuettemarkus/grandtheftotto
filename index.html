@@ -94,7 +94,7 @@ world.addContactMaterial(new CANNON.ContactMaterial(groundMat, carMat, {
 }))
 
 // ── Ground ──
-const floorGeo = new THREE.PlaneGeometry(200, 200)
+const floorGeo = new THREE.PlaneGeometry(400, 400)
 const floorMeshMat = new THREE.MeshStandardMaterial({ color: 0x559944, roughness: 0.9 })
 const floor = new THREE.Mesh(floorGeo, floorMeshMat)
 floor.rotation.x = -Math.PI / 2
@@ -502,8 +502,8 @@ const creatureDefs = [
 ]
 for (const def of creatureDefs) {
   for (let i = 0; i < def.count; i++) {
-    const x = (Math.random()-0.5) * 150
-    const z = (Math.random()-0.5) * 150
+    const x = (Math.random()-0.5) * 300
+    const z = (Math.random()-0.5) * 300
     if (Math.abs(x)<10 && Math.abs(z)<10) continue
     const mesh = buildCreature(def.type)
     mesh.position.set(x, 0, z)
@@ -587,10 +587,12 @@ function updateCreatures(dt) {
       c.wanderTarget = { x: c.x + (Math.random()-0.5)*40, z: c.z + (Math.random()-0.5)*40 }
       c.wanderTimer = 200
     }
-    else if (c.state === 'wander' && dist < c.chaseRange) {
+    else if (c.state === 'wander' && dist < c.chaseRange && Math.abs(carSpeed) > 2) {
+      // Only start chasing if the car is actually moving
       c.state = 'chase'
     }
-    else if (c.state === 'chase' && dist > c.giveUp) {
+    else if (c.state === 'chase' && (dist > c.giveUp || (dist < 8 && Math.abs(carSpeed) < 1))) {
+      // Give up if too far OR if they've reached a stopped car — wander away
       c.state = 'wander'
       c.wanderTarget = { x: c.x + (Math.random()-0.5)*40, z: c.z + (Math.random()-0.5)*40 }
       c.wanderTimer = 200
@@ -616,8 +618,8 @@ function updateCreatures(dt) {
       c.z += Math.cos(c.angle) * c.speed * dt
     }
 
-    c.x = Math.max(-90, Math.min(90, c.x))
-    c.z = Math.max(-90, Math.min(90, c.z))
+    c.x = Math.max(-180, Math.min(180, c.x))
+    c.z = Math.max(-180, Math.min(180, c.z))
 
     // Dino stomp
     const stompY = c.type === 'dinosaur' ? Math.abs(Math.sin(c.anim * 1.5)) * 0.3 : 0
@@ -694,9 +696,9 @@ for (let i = 0; i < 3; i++) {
 }
 
 // ── Trees ──
-for (let i = 0; i < 40; i++) {
-  const x = (Math.random() - 0.5) * 160
-  const z = (Math.random() - 0.5) * 160
+for (let i = 0; i < 36; i++) {
+  const x = (Math.random() - 0.5) * 320
+  const z = (Math.random() - 0.5) * 320
   if (Math.abs(x) < 8 && Math.abs(z) < 8) continue
   const trunkH = 6 + Math.random() * 4
   const trunk = new THREE.Mesh(
@@ -803,9 +805,9 @@ const puIcons = {
   coins: makePUIcon('\u{1FA99}', 'rgba(255,215,0,0.8)'),  // coin
 }
 
-for (let i = 0; i < 25; i++) {
+for (let i = 0; i < 22; i++) {
   const t = puTypes[i % puTypes.length]
-  const x = (Math.random()-0.5) * 160, z = (Math.random()-0.5) * 160
+  const x = (Math.random()-0.5) * 320, z = (Math.random()-0.5) * 320
   if (Math.abs(x)<8 && Math.abs(z)<8) continue
   // Billboard sprite with icon texture
   const mat = new THREE.SpriteMaterial({ map: puIcons[t.effect], transparent: true, depthTest: false })
@@ -933,6 +935,7 @@ const turnSpeed = 2.5
 const boostMult = 2.5
 let carSpeed = 0
 let carAngle = 0
+let boosting = false
 
 function updateCar(dt) {
   // Get car's up vector — if flipped, R resets
@@ -965,7 +968,7 @@ function updateCar(dt) {
   const kbBoosting = keys['Space']
 
   // Combine boost from either source
-  const boosting = kbBoosting || gpBoosting
+  boosting = kbBoosting || gpBoosting
   const speedMul = activePU === 'speed' ? 2 : 1
   const effAccel = (boosting ? accel * boostMult : accel) * speedMul
   const effMax = (boosting ? maxSpeed * 1.8 : maxSpeed) * speedMul
@@ -988,7 +991,7 @@ function updateCar(dt) {
   // Steering — combine keyboard + gamepad
   const kbLeft = (keys['ArrowLeft'] || keys['KeyA']) ? 1 : 0
   const kbRight = (keys['ArrowRight'] || keys['KeyD']) ? 1 : 0
-  const steerInput = (kbRight - kbLeft) || -gpStickX
+  const steerInput = (kbLeft - kbRight) || gpStickX
 
   if (Math.abs(carSpeed) > 0.5 && Math.abs(steerInput) > 0) {
     const turnFactor = Math.min(1, Math.abs(carSpeed) / 8)
@@ -1204,11 +1207,89 @@ function updateIntro(dt) {
 }
 
 // ════════════════════════════════════════════════════════════
+// FEATURE: NORTHERN LIGHTS AURORA — shimmering curtains across the sky
+// ════════════════════════════════════════════════════════════
+const auroraCurtains = []
+const auroraColors = [0x00ff88, 0x00ccff, 0x8844ff, 0x00ffcc]
+for (let i = 0; i < 5; i++) {
+  const w = 80 + Math.random() * 120, h = 30 + Math.random() * 20
+  const geo = new THREE.PlaneGeometry(w, h, 20, 1)
+  const mat = new THREE.MeshBasicMaterial({
+    color: auroraColors[i % auroraColors.length],
+    transparent: true, opacity: 0.06, side: THREE.DoubleSide,
+  })
+  const curtain = new THREE.Mesh(geo, mat)
+  const angle = (i / 5) * Math.PI * 2
+  curtain.position.set(Math.cos(angle) * 200, 120 + Math.random() * 40, Math.sin(angle) * 200)
+  curtain.rotation.y = angle + Math.PI / 2
+  scene.add(curtain)
+  auroraCurtains.push({ mesh: curtain, phase: Math.random() * Math.PI * 2, speed: 0.3 + Math.random() * 0.4 })
+}
+
+function updateAurora(dt) {
+  for (const a of auroraCurtains) {
+    a.phase += dt * a.speed
+    // Undulate the vertices for a shimmering curtain effect
+    const pos = a.mesh.geometry.attributes.position
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i)
+      pos.setY(i, pos.getY(i) + Math.sin(a.phase + x * 0.05) * 0.15)
+    }
+    pos.needsUpdate = true
+    // Pulse opacity
+    a.mesh.material.opacity = 0.04 + Math.sin(a.phase * 0.7) * 0.025
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// FEATURE: SPEED WARP LINES — streaking light lines when boosting fast
+// ════════════════════════════════════════════════════════════
+const warpLines = []
+const warpMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 })
+for (let i = 0; i < 30; i++) {
+  const geo = new THREE.BoxGeometry(0.04, 0.04, 3 + Math.random() * 5)
+  const line = new THREE.Mesh(geo, warpMat.clone())
+  line.visible = false
+  scene.add(line)
+  warpLines.push({
+    mesh: line,
+    offsetX: (Math.random() - 0.5) * 12,
+    offsetY: Math.random() * 6 + 1,
+    offsetZ: (Math.random() - 0.5) * 12,
+    speed: 20 + Math.random() * 30,
+    z: Math.random() * 20,
+  })
+}
+
+function updateWarpLines(dt) {
+  const spd = Math.abs(carSpeed)
+  const active = spd > 25 && boosting
+  for (const w of warpLines) {
+    w.mesh.visible = active
+    if (!active) continue
+    // Position relative to car, streaking past
+    w.z -= w.speed * dt
+    if (w.z < -10) w.z = 10 + Math.random() * 10
+    w.mesh.position.set(
+      carBody.position.x + w.offsetX,
+      carBody.position.y + w.offsetY,
+      carBody.position.z + w.offsetZ + w.z
+    )
+    w.mesh.rotation.y = carAngle
+    const alpha = Math.min(1, (spd - 25) / 15) * 0.5
+    w.mesh.material.opacity = alpha
+    // Color shifts from white to blue at extreme speed
+    const hue = spd > 40 ? 0.6 : 0
+    w.mesh.material.color.setHSL(hue, spd > 40 ? 0.5 : 0, 1)
+  }
+}
+
+// ════════════════════════════════════════════════════════════
 // OFF-MAP CHECK
 // ════════════════════════════════════════════════════════════
 function checkBounds() {
   const p = carBody.position
-  if (Math.abs(p.x) > 130 || Math.abs(p.z) > 130 || p.y < -10) {
+  if (Math.abs(p.x) > 195 || Math.abs(p.z) > 195 || p.y < -10) {
     carBody.position.set(0, 3, 0)
     carBody.velocity.setZero()
     carBody.angularVelocity.setZero()
@@ -1261,6 +1342,8 @@ function loop() {
   updateSpace(dt)
   if (opts.creatures) updateCreatures(dt)
   updatePowerups(dt)
+  updateAurora(dt)
+  updateWarpLines(dt)
   updateFireworks(dt)
   updateTrail(dt)
   updateCoins()
