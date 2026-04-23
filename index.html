@@ -7,14 +7,29 @@
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{overflow:hidden;height:100%;background:#1a1a2e;font-family:'Segoe UI',sans-serif}
-canvas{display:block;position:fixed;top:0;left:0}
-#hud{position:fixed;bottom:20px;left:20px;color:#fff;font-family:monospace;pointer-events:none;z-index:10}
-#hud .speed{font-size:2rem;font-weight:bold}
-#hud .info{font-size:0.75rem;color:#aaa;margin-top:4px}
+body>canvas{display:block;position:fixed;top:0;left:0}
 #loading{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#1a1a2e;color:#fff;transition:opacity 0.8s}
 #loading.done{opacity:0;pointer-events:none}
 #loading h1{font-size:2.5rem;color:#ffd700;letter-spacing:0.15em;margin-bottom:0.5rem}
 #loading p{color:#888;font-size:0.9rem}
+/* ── Speedometer (center-bottom) ── */
+#speedo-wrap{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);pointer-events:none;z-index:10;text-align:center}
+#speedo{display:block}
+#gear{position:absolute;bottom:58px;left:50%;transform:translateX(-50%);font:bold 2.2rem 'Segoe UI',sans-serif;color:#ffd700;text-shadow:0 0 12px rgba(255,215,0,0.6);transition:color 0.15s,text-shadow 0.15s}
+#gear.shift{color:#fff;text-shadow:0 0 20px rgba(255,255,255,0.9)}
+#speed-val{font:bold 1rem monospace;color:#fff;margin-top:-8px;letter-spacing:0.05em}
+#drift-bar{width:160px;height:6px;background:rgba(255,255,255,0.1);border-radius:3px;margin:4px auto 0;overflow:hidden;opacity:0;transition:opacity 0.2s}
+#drift-bar.active{opacity:1}
+#drift-fill{width:0%;height:100%;background:linear-gradient(90deg,#ffd700,#ff8800);border-radius:3px;transition:width 0.05s linear;box-shadow:0 0 8px rgba(255,170,0,0.6)}
+/* ── Game info (top-right) ── */
+#game-info{position:fixed;top:14px;right:14px;pointer-events:none;z-index:10;text-align:right;font-family:monospace}
+#game-mode{font:bold 1rem monospace;color:#ffd700;letter-spacing:0.12em;margin-bottom:6px}
+#game-status{font:bold 0.85rem monospace;color:#00ccff;margin-bottom:4px;min-height:1.1em}
+#game-coins{font:bold 0.95rem monospace;color:#ffd700}
+#game-creatures{font:bold 0.95rem monospace;color:#ff4444;margin-top:2px}
+/* ── Controls reference (bottom-right) ── */
+#controls-ref{position:fixed;bottom:14px;right:14px;pointer-events:none;z-index:10;background:rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px 12px;font:0.65rem monospace;color:rgba(255,255,255,0.55);line-height:1.6}
+#controls-ref .ctrl-title{color:rgba(255,215,0,0.7);font-weight:bold;font-size:0.7rem;margin-bottom:2px}
 </style>
 </head>
 <body>
@@ -27,16 +42,39 @@ canvas{display:block;position:fixed;top:0;left:0}
 </div>
 <!-- Options Menu -->
 <div id="opts" style="position:fixed;inset:0;z-index:80;display:none;background:rgba(0,0,0,0.85);font-family:'Segoe UI',sans-serif;color:#fff">
-  <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:380px;background:rgba(30,30,30,0.95);border:1px solid #444;border-radius:12px;padding:28px;text-align:center">
-    <h2 style="color:#ffd700;font-size:1.5rem;margin-bottom:18px;letter-spacing:0.1em">OPTIONS</h2>
+  <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:400px;background:rgba(20,20,25,0.97);border:1px solid #555;border-radius:14px;padding:28px 32px;text-align:center">
+    <h2 style="color:#ffd700;font-size:1.5rem;margin-bottom:18px;letter-spacing:0.12em">OPTIONS</h2>
     <div id="opt-list"></div>
-    <button id="opt-resume" style="margin-top:18px;padding:10px 32px;background:#ffd700;color:#111;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:1rem">RESUME</button>
+    <div style="display:flex;gap:10px;justify-content:center;margin-top:20px">
+      <button id="opt-start" style="flex:1;padding:10px 0;background:#22aa44;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:0.9rem">START GAME</button>
+      <button id="opt-resume" style="flex:1;padding:10px 0;background:#ffd700;color:#111;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:0.9rem">RESUME</button>
+      <button id="opt-reset" style="flex:1;padding:10px 0;background:#cc3333;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:0.9rem">RESET ALL</button>
+    </div>
   </div>
 </div>
 <div id="hit-flash" style="position:fixed;inset:0;background:rgba(255,0,0,0.3);pointer-events:none;z-index:9;opacity:0;transition:opacity 0.15s"></div>
-<div id="hud">
-  <div class="speed" id="spd">0 km/h</div>
-  <div class="info">WASD / Arrows: Drive &nbsp; Space: Boost &nbsp; R: Reset</div>
+<!-- Speedometer -->
+<div id="speedo-wrap">
+  <canvas id="speedo" width="200" height="200"></canvas>
+  <div id="gear">N</div>
+  <div id="speed-val">0 MPH</div>
+  <div id="drift-bar"><div id="drift-fill"></div></div>
+</div>
+<!-- Game info (top-right) -->
+<div id="game-info">
+  <div id="game-mode">EXPLORE</div>
+  <div id="game-status"></div>
+  <div id="game-coins">Coins: 0</div>
+  <div id="game-creatures"></div>
+</div>
+<!-- Controls reference (bottom-right) -->
+<div id="controls-ref">
+  <div class="ctrl-title">KEYBOARD</div>
+  <div id="ctrl-body">
+    W/S Drive &bull; A/D Steer<br>
+    Space Boost &bull; R Reset<br>
+    H Horn &bull; ESC Menu
+  </div>
 </div>
 <script type="module">
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js'
@@ -166,16 +204,18 @@ starGeo.setAttribute('size', new THREE.BufferAttribute(starSizes, 1))
 const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.5, sizeAttenuation: true, transparent: true, opacity: 0.9 })
 scene.add(new THREE.Points(starGeo, starMat))
 
-// Planets
-function addPlanet(x, y, z, radius, color, ringColor) {
+// Planets — data-driven with atmosphere glow
+const planetData = []
+function addPlanet(x, y, z, radius, color, ringColor, name) {
   const planet = new THREE.Mesh(
     new THREE.SphereGeometry(radius, 32, 32),
     new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.2, emissive: color, emissiveIntensity: 0.15 })
   )
   planet.position.set(x, y, z)
   scene.add(planet)
+  let ring = null
   if (ringColor) {
-    const ring = new THREE.Mesh(
+    ring = new THREE.Mesh(
       new THREE.TorusGeometry(radius * 1.6, radius * 0.12, 2, 64),
       new THREE.MeshStandardMaterial({ color: ringColor, emissive: ringColor, emissiveIntensity: 0.3, side: THREE.DoubleSide })
     )
@@ -183,14 +223,32 @@ function addPlanet(x, y, z, radius, color, ringColor) {
     ring.rotation.x = Math.PI * 0.35
     scene.add(ring)
   }
+  // Atmosphere glow
+  const atmo = new THREE.Mesh(
+    new THREE.SphereGeometry(radius * 1.15, 24, 24),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.08, side: THREE.BackSide })
+  )
+  atmo.position.copy(planet.position)
+  scene.add(atmo)
+  // Return portal on surface (glowing ring)
+  const portal = new THREE.Mesh(
+    new THREE.TorusGeometry(3, 0.3, 8, 32),
+    new THREE.MeshStandardMaterial({ color: 0x00ffaa, emissive: 0x00ffaa, emissiveIntensity: 3 })
+  )
+  // Place portal on "north pole" of planet
+  portal.position.set(x, y + radius + 0.5, z)
+  portal.rotation.x = Math.PI / 2
+  scene.add(portal)
+  const pd = { mesh: planet, ring, atmo, portal, pos: new THREE.Vector3(x, y, z), radius, color, name, discovered: false }
+  planetData.push(pd)
   return planet
 }
 const planets = [
-  addPlanet(-350, 200, -500, 40, 0xcc6633, 0xddaa66),  // Saturn-like
-  addPlanet(400, 150, -400, 25, 0x4466cc, null),         // blue gas giant
-  addPlanet(-200, 300, 500, 18, 0xcc3333, null),          // red planet
-  addPlanet(500, -100, 300, 55, 0x886644, 0xaa9977),      // big ringed
-  addPlanet(0, 400, -600, 12, 0x88ffaa, null),            // green moon
+  addPlanet(-350, 200, -500, 40, 0xcc6633, 0xddaa66, 'Saturn'),
+  addPlanet(400, 150, -400, 25, 0x4466cc, null, 'Neptune'),
+  addPlanet(-200, 300, 500, 18, 0xcc3333, null, 'Mars'),
+  addPlanet(500, -100, 300, 55, 0x886644, 0xaa9977, 'Jupiter'),
+  addPlanet(0, 400, -600, 12, 0x88ffaa, null, 'Emerald Moon'),
 ]
 
 // Nebula glow clouds
@@ -231,7 +289,11 @@ for (let i = 0; i < 3; i++) {
 
 function updateSpace(dt) {
   // Slowly rotate planets
-  for (const p of planets) p.rotation.y += dt * 0.05
+  for (const pd of planetData) {
+    pd.mesh.rotation.y += dt * 0.05
+    // Pulse atmosphere
+    pd.atmo.material.opacity = 0.06 + Math.sin(performance.now() * 0.001 + pd.radius) * 0.02
+  }
 
   // Animate meteors
   for (const m of meteors) {
@@ -364,6 +426,47 @@ const subaruBadge = new THREE.Mesh(
 )
 subaruBadge.position.set(0, carH * 0.15, carL * 0.501)
 carGroup.add(subaruBadge)
+
+// Barbie sparkle badge (hidden by default)
+const barbieBadgeTex = (function() {
+  const c = document.createElement('canvas'); c.width = 64; c.height = 64
+  const x = c.getContext('2d')
+  x.fillStyle = '#FF69B4'
+  x.beginPath(); x.ellipse(32, 32, 28, 22, 0, 0, Math.PI * 2); x.fill()
+  x.strokeStyle = '#FFB6C1'; x.lineWidth = 2; x.stroke()
+  // Star sparkle
+  x.fillStyle = '#fff'
+  const drawStar = (sx, sy, r) => { x.beginPath(); for(let i=0;i<5;i++){const a=Math.PI*2/5*i-Math.PI/2; x.lineTo(sx+Math.cos(a)*r, sy+Math.sin(a)*r); const b=a+Math.PI/5; x.lineTo(sx+Math.cos(b)*r*0.4, sy+Math.sin(b)*r*0.4)} x.closePath(); x.fill() }
+  drawStar(32, 28, 12)
+  // Smaller sparkles
+  drawStar(16, 18, 4); drawStar(48, 18, 4); drawStar(22, 44, 3); drawStar(42, 44, 3)
+  return new THREE.CanvasTexture(c)
+})()
+
+// Store original car colors for skin swap
+const origCarColors = {
+  body: bodyMesh.material.color.getHex(),
+  cabin: cabinMesh.material.color.getHex(),
+  scoop: scoopMesh.material.color.getHex(),
+  wing: wing.material.color.getHex(),
+}
+function applyCarSkin(skinIdx) {
+  if (skinIdx === 1) { // Barbie Wagon
+    bodyMesh.material.color.setHex(0xFF69B4)
+    cabinMesh.material.color.setHex(0xFFB6C1)
+    scoopMesh.material.color.setHex(0xffffff)
+    wing.material.color.setHex(0xFF69B4)
+    subaruBadge.material.map = barbieBadgeTex
+    subaruBadge.material.needsUpdate = true
+  } else { // WRX STI
+    bodyMesh.material.color.setHex(origCarColors.body)
+    cabinMesh.material.color.setHex(origCarColors.cabin)
+    scoopMesh.material.color.setHex(origCarColors.scoop)
+    wing.material.color.setHex(origCarColors.wing)
+    subaruBadge.material.map = subaruLogoTex
+    subaruBadge.material.needsUpdate = true
+  }
+}
 
 // Wheels (visual only — physics is the box sliding)
 const wheelGeo = new THREE.CylinderGeometry(0.9, 0.9, 0.6, 12)
@@ -618,19 +721,10 @@ for (const def of creatureDefs) {
 }
 
 let creatureScore = 0
-const creatureScoreHud = document.createElement('div')
-creatureScoreHud.style.cssText = 'position:fixed;top:20px;right:20px;color:#ff4444;font:bold 1.3rem monospace;pointer-events:none;z-index:10;display:none'
-document.body.appendChild(creatureScoreHud)
 
 function updateCreatures(dt) {
   const px = carBody.position.x, pz = carBody.position.z
   const isGiant = activePU === 'giant'
-
-  // Show score HUD only when giant mode has been used at least once
-  if (creatureScore > 0) {
-    creatureScoreHud.style.display = 'block'
-    creatureScoreHud.textContent = 'Creatures: ' + creatureScore
-  }
 
   for (const c of creatureList) {
     // Handle respawn timer for eaten creatures
@@ -852,9 +946,14 @@ for (let i = 0; i < 36; i++) {
 const keys = {}
 let menuOpen = false
 let optSel = 0 // selected menu option index for Xbox nav
-const opts = { creatures: true, sound: false, powerups: true, location: 0 }
+const opts = { creatures: true, sound: false, powerups: true, location: 0, camera: 0, carSkin: 0 }
 const locNames = ['Grassland', 'Desert', 'Snow', 'Neon City']
 const locColors = [0x559944, 0xd2b48c, 0xeeeeff, 0x333344]
+const skinNames = ['WRX STI', 'Barbie Wagon']
+const camNames = ['Normal', 'Wide', 'Cinematic']
+const camFOVs = [60, 80, 45]
+const camDists = [11, 15, 18]  // base chase distance
+const camHeights = [6.6, 8, 4]
 
 // Build options menu DOM
 function buildOptMenu() {
@@ -862,34 +961,72 @@ function buildOptMenu() {
   list.innerHTML = ''
   const items = [
     { label: 'Creatures', key: 'creatures', val: opts.creatures ? 'ON' : 'OFF' },
-    { label: 'Sound', key: 'sound', val: opts.sound ? 'ON' : 'OFF' },
     { label: 'Powerups', key: 'powerups', val: opts.powerups ? 'ON' : 'OFF' },
+    { label: 'Sound', key: 'sound', val: opts.sound ? 'ON' : 'OFF' },
     { label: 'Location', key: 'location', val: locNames[opts.location] },
+    { label: 'Camera', key: 'camera', val: camNames[opts.camera] },
+    { label: 'Car', key: 'carSkin', val: skinNames[opts.carSkin] },
   ]
+  const totalItems = items.length + 2 // +2 for Start/Reset buttons at bottom
   items.forEach((it, idx) => {
     const row = document.createElement('div')
-    row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #333'
+    row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px 4px;border-bottom:1px solid rgba(255,255,255,0.06)'
     if (idx === optSel) row.style.background = 'rgba(255,215,0,0.1)'
-    const sel = idx === optSel ? ' style="color:#ffd700;font-size:1.1rem"' : ''
-    row.innerHTML = `<span${sel}>${idx === optSel ? '► ' : ''}${it.label}</span>
-      <button onclick="toggleOpt('${it.key}')" style="background:${it.val==='ON'||it.key==='location'?'#ffd700':'#333'};color:${it.val==='ON'||it.key==='location'?'#111':'#fff'};border:1px solid #555;padding:5px 14px;border-radius:4px;cursor:pointer;font-size:0.85rem">${it.val}</button>`
+    const isOn = it.val === 'ON' || it.key === 'location' || it.key === 'camera'
+    const sel = idx === optSel ? ' style="color:#ffd700;font-size:1.05rem"' : ''
+    row.innerHTML = `<span${sel}>${idx === optSel ? '\u25b6 ' : '  '}${it.label}</span>
+      <button onclick="toggleOpt('${it.key}')" style="background:${isOn?'#ffd700':'#444'};color:${isOn?'#111':'#ccc'};border:none;padding:6px 16px;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:bold;min-width:90px">${it.val}</button>`
     list.appendChild(row)
   })
+  // Highlight Start/Reset buttons if selected via D-pad
+  const startBtn = document.getElementById('opt-start')
+  const resetBtn = document.getElementById('opt-reset')
+  startBtn.style.outline = optSel === items.length ? '2px solid #ffd700' : 'none'
+  resetBtn.style.outline = optSel === items.length + 1 ? '2px solid #ffd700' : 'none'
 }
 window.toggleOpt = function(key) {
   if (key === 'location') { opts.location = (opts.location + 1) % locNames.length; floor.material.color.setHex(locColors[opts.location]) }
+  else if (key === 'camera') {
+    opts.camera = (opts.camera + 1) % camNames.length
+    camera.fov = camFOVs[opts.camera]
+    camera.updateProjectionMatrix()
+  }
+  else if (key === 'carSkin') {
+    opts.carSkin = (opts.carSkin + 1) % skinNames.length
+    applyCarSkin(opts.carSkin)
+  }
   else opts[key] = !opts[key]
-  // Apply creature visibility
   if (key === 'creatures') creatureList.forEach(c => c.mesh.visible = opts.creatures)
-  // Apply powerup visibility
   if (key === 'powerups') powerupMeshes.forEach(p => { if(!p.collected) p.mesh.visible = opts.powerups })
   buildOptMenu()
 }
 
-document.getElementById('opt-resume').onclick = () => { menuOpen = false; document.getElementById('opts').style.display = 'none' }
+function closeMenu() { menuOpen = false; document.getElementById('opts').style.display = 'none' }
+function startGame() {
+  // Exit space/planet mode if active
+  if (spaceMode || onPlanet >= 0) { spaceMode = false; onPlanet = -1; carBody.type = CANNON.Body.DYNAMIC; removeSuperGlider() }
+  carBody.position.set(0, 3, 0); carBody.velocity.setZero(); carBody.angularVelocity.setZero()
+  carBody.quaternion.setFromEuler(0, 0, 0)
+  carAngle = 0; carSpeed = 0; coinCount = 0; creatureScore = 0; driftScore = 0; driftTime = 0
+  camera.up.set(0, 1, 0)
+  closeMenu()
+}
+function resetAll() {
+  startGame()
+  // Reset powerups
+  for (const p of powerupMeshes) { p.collected = false; p.mesh.visible = opts.powerups }
+  // Reset creatures to home
+  for (const c of creatureList) { c.x = c.homeX; c.z = c.homeZ; c.state = 'wander'; c.eaten = false; c.mesh.visible = opts.creatures }
+  activePU = null; puTimer = 0; carGroup.scale.setScalar(1)
+}
+
+document.getElementById('opt-resume').onclick = closeMenu
+document.getElementById('opt-start').onclick = startGame
+document.getElementById('opt-reset').onclick = resetAll
 
 window.addEventListener('keydown', e => {
   keys[e.code] = true
+  lastInputType = 'keyboard'
   if (e.code === 'Escape') {
     menuOpen = !menuOpen
     document.getElementById('opts').style.display = menuOpen ? 'block' : 'none'
@@ -1043,12 +1180,7 @@ function updateTrail(dt) {
 }
 
 // Feature 3: COIN COUNTER + CELEBRATION at milestones
-const coinHud = document.createElement('div')
-coinHud.style.cssText = 'position:fixed;top:20px;left:20px;color:#ffd700;font:bold 1.3rem monospace;pointer-events:none;z-index:10'
-coinHud.textContent = 'Coins: 0'
-document.body.appendChild(coinHud)
 function updateCoins() {
-  coinHud.textContent = 'Coins: ' + coinCount
   // Milestone celebrations
   if (coinCount > 0 && coinCount % 25 === 0) spawnFireworks()
 }
@@ -1064,8 +1196,20 @@ const boostMult = 2.5
 let carSpeed = 0
 let carAngle = 0
 let boosting = false
+let _isDrifting = false
+let _isGliding = false
+let _wasDrifting = false
+let driftTime = 0
+let driftScore = 0
+let lastInputType = 'keyboard' // 'keyboard' or 'gamepad'
+let spaceMode = false
+let onPlanet = -1 // index into planetData, -1 = not on planet
+let spacePitch = 0, spaceYaw = 0 // 3D orientation in space
 
 function updateCar(dt) {
+  // Space/planet mode handled by updateSpaceFlight
+  if (spaceMode || onPlanet >= 0) return
+
   // Get car's up vector — if flipped, R resets
   const up = new CANNON.Vec3(0, 1, 0)
   carBody.quaternion.vmult(up, up)
@@ -1089,6 +1233,7 @@ function updateCar(dt) {
   const gpStickX = gp ? (Math.abs(gp.axes[0]) > 0.15 ? gp.axes[0] : 0) : 0
   const gpBoosting = gp?.buttons[0]?.pressed || false
   const gpHasThrottle = gpRT > 0.15 || gpLT > 0.15
+  if (gpHasThrottle || Math.abs(gpStickX) > 0 || gpBoosting) lastInputType = 'gamepad'
 
   const kbFwd = (keys['ArrowUp'] || keys['KeyW']) ? 1 : 0
   const kbRev = (keys['ArrowDown'] || keys['KeyS']) ? 1 : 0
@@ -1147,11 +1292,15 @@ function updateCar(dt) {
     }
     // Menu navigation with D-pad / A button when menu open
     if (menuOpen) {
+      const menuKeys = ['creatures','powerups','sound','location','camera','carSkin']
+      const menuTotal = menuKeys.length + 2 // +2 for Start, Reset buttons
       if (gp.buttons[12]?.pressed && !keys._gpUp) { keys._gpUp=true; optSel=Math.max(0,optSel-1); buildOptMenu(); setTimeout(()=>keys._gpUp=false,200) }
-      if (gp.buttons[13]?.pressed && !keys._gpDn) { keys._gpDn=true; optSel=Math.min(3,optSel+1); buildOptMenu(); setTimeout(()=>keys._gpDn=false,200) }
-      if (gp.buttons[0]?.pressed && !keys._gpA) { // A = toggle selected option
+      if (gp.buttons[13]?.pressed && !keys._gpDn) { keys._gpDn=true; optSel=Math.min(menuTotal-1,optSel+1); buildOptMenu(); setTimeout(()=>keys._gpDn=false,200) }
+      if (gp.buttons[0]?.pressed && !keys._gpA) { // A = toggle/activate selected
         keys._gpA=true
-        toggleOpt(['creatures','sound','powerups','location'][optSel])
+        if (optSel < menuKeys.length) toggleOpt(menuKeys[optSel])
+        else if (optSel === menuKeys.length) startGame()
+        else resetAll()
         setTimeout(()=>keys._gpA=false,250)
       }
     }
@@ -1196,11 +1345,31 @@ function updateCar(dt) {
   }
 
   // Drift — visual tilt + dirt spray when turning at speed
-  const drifting = Math.abs(steerInput) > 0.3 && Math.abs(carSpeed) > 8
+  const drifting = Math.abs(steerInput) > 0.3 && Math.abs(carSpeed) > 8 && !isAirborne
   const driftTilt = drifting ? steerInput * 0.12 : 0
-  carBody.quaternion.setFromEuler(0, carAngle, driftTilt)
+  if (!spaceMode && onPlanet < 0) carBody.quaternion.setFromEuler(0, carAngle, driftTilt)
   carBody.angularVelocity.x *= 0.5
   carBody.angularVelocity.z *= 0.5
+
+  // Keep car grounded while drifting
+  if (drifting && carBody.velocity.y > 0) carBody.velocity.y = 0
+
+  // Drift timer + scoring
+  if (drifting) {
+    driftTime += dt
+  } else if (_wasDrifting && driftTime > 0.5) {
+    // Drift ended — award points
+    const pts = Math.floor(driftTime * 50)
+    driftScore += pts
+    puToast.textContent = '+' + pts + ' DRIFT!'
+    puToast.style.color = '#ffaa00'
+    puToast.style.opacity = '1'
+    setTimeout(() => puToast.style.opacity = '0', 1500)
+    driftTime = 0
+  } else {
+    driftTime = 0
+  }
+  _wasDrifting = drifting
 
   // Dirt spray particles when drifting
   if (drifting && !isAirborne && _trailFrame % 2 === 0) {
@@ -1235,11 +1404,177 @@ function updateCar(dt) {
     }
   }
 
-  // HUD
-  const hudText = Math.floor(Math.abs(carSpeed) * 3.6) + ' km/h'
-  if (isAirborne && boosting) document.getElementById('spd').textContent = hudText + ' GLIDING'
-  else if (drifting) document.getElementById('spd').textContent = hudText + ' DRIFT!'
-  else document.getElementById('spd').textContent = hudText
+  // HUD status (read by updateHUD)
+  _isDrifting = drifting
+  _isGliding = isAirborne && boosting
+}
+
+// ════════════════════════════════════════════════════════════
+// HUD — speedometer, gear, game info, controls reference
+// ════════════════════════════════════════════════════════════
+const speedoCanvas = document.getElementById('speedo')
+const speedoCtx = speedoCanvas.getContext('2d')
+const gearEl = document.getElementById('gear')
+const speedValEl = document.getElementById('speed-val')
+const gameModeEl = document.getElementById('game-mode')
+const gameStatusEl = document.getElementById('game-status')
+const gameCoinsEl = document.getElementById('game-coins')
+const gameCreaturesEl = document.getElementById('game-creatures')
+const ctrlBodyEl = document.getElementById('ctrl-body')
+const ctrlTitleEl = document.querySelector('#controls-ref .ctrl-title')
+const driftBarEl = document.getElementById('drift-bar')
+const driftFillEl = document.getElementById('drift-fill')
+let displayedMph = 0
+let prevGear = 'N'
+
+function getGear(mph, speed) {
+  if (speed < -0.5) return 'R'
+  if (mph < 1) return 'N'
+  if (mph < 15) return '1'
+  if (mph < 30) return '2'
+  if (mph < 50) return '3'
+  if (mph < 75) return '4'
+  if (mph < 100) return '5'
+  return '6'
+}
+
+function drawSpeedo(mph) {
+  const w = 200, h = 200, cx = w/2, cy = h/2, r = 80
+  const ctx = speedoCtx
+  ctx.clearRect(0, 0, w, h)
+
+  // Background
+  ctx.beginPath()
+  ctx.arc(cx, cy, r + 12, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'
+  ctx.fill()
+
+  const startAngle = Math.PI * 0.75  // 135°
+  const endAngle = Math.PI * 2.25    // 405° (270° sweep)
+  const sweep = endAngle - startAngle
+  const maxMph = 160
+
+  // Red zone arc (above 120 MPH)
+  const redStart = startAngle + (120 / maxMph) * sweep
+  ctx.beginPath()
+  ctx.arc(cx, cy, r, redStart, endAngle, false)
+  ctx.lineWidth = 8
+  ctx.strokeStyle = 'rgba(255,50,50,0.25)'
+  ctx.stroke()
+
+  // Track arc
+  ctx.beginPath()
+  ctx.arc(cx, cy, r, startAngle, endAngle, false)
+  ctx.lineWidth = 3
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)'
+  ctx.stroke()
+
+  // Tick marks + numbers
+  for (let i = 0; i <= maxMph; i += 10) {
+    const angle = startAngle + (i / maxMph) * sweep
+    const cos = Math.cos(angle), sin = Math.sin(angle)
+    const isMajor = i % 40 === 0
+    const inner = isMajor ? r - 16 : r - 10
+    const outer = r - 2
+    ctx.beginPath()
+    ctx.moveTo(cx + cos * inner, cy + sin * inner)
+    ctx.lineTo(cx + cos * outer, cy + sin * outer)
+    ctx.lineWidth = isMajor ? 2.5 : 1
+    ctx.strokeStyle = i >= 120 ? 'rgba(255,80,80,0.8)' : 'rgba(255,255,255,0.6)'
+    ctx.stroke()
+    if (isMajor) {
+      ctx.font = 'bold 11px monospace'
+      ctx.fillStyle = i >= 120 ? '#ff5555' : 'rgba(255,255,255,0.7)'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('' + i, cx + cos * (r - 26), cy + sin * (r - 26))
+    }
+  }
+
+  // Needle
+  const clampMph = Math.min(mph, maxMph)
+  const needleAngle = startAngle + (clampMph / maxMph) * sweep
+  const needleLen = r - 8
+  ctx.beginPath()
+  ctx.moveTo(cx, cy)
+  ctx.lineTo(cx + Math.cos(needleAngle) * needleLen, cy + Math.sin(needleAngle) * needleLen)
+  ctx.lineWidth = 2.5
+  ctx.strokeStyle = clampMph >= 120 ? '#ff4444' : '#ff8800'
+  ctx.lineCap = 'round'
+  ctx.stroke()
+
+  // Center dot
+  ctx.beginPath()
+  ctx.arc(cx, cy, 5, 0, Math.PI * 2)
+  ctx.fillStyle = '#ffd700'
+  ctx.fill()
+}
+
+function updateHUD(dt) {
+  const actualMph = Math.abs(carSpeed) * 2.237
+  // Smooth needle
+  displayedMph += (actualMph - displayedMph) * Math.min(1, dt * 12)
+
+  // Speedometer
+  drawSpeedo(displayedMph)
+  speedValEl.textContent = Math.floor(displayedMph) + ' MPH'
+
+  // Gear
+  const gear = getGear(displayedMph, carSpeed)
+  gearEl.textContent = gear
+  if (gear !== prevGear) {
+    gearEl.classList.add('shift')
+    setTimeout(() => gearEl.classList.remove('shift'), 150)
+    prevGear = gear
+  }
+
+  // Game mode label (reset if on ground)
+  if (!spaceMode && onPlanet < 0) gameModeEl.textContent = 'EXPLORE'
+
+  // Game info — status (drift / glide / powerup)
+  let status = ''
+  if (_isGliding) status = 'GLIDING'
+  else if (_isDrifting) status = 'DRIFT!'
+  if (activePU && puTimer > 0) {
+    const puName = activePU === 'speed' ? 'SPEED BOOST' : activePU === 'giant' ? 'GIANT MODE' : activePU.toUpperCase()
+    status = (status ? status + ' | ' : '') + puName + ' ' + puTimer.toFixed(1) + 's'
+  }
+  gameStatusEl.textContent = status
+  gameStatusEl.style.color = _isDrifting ? '#ffaa00' : _isGliding ? '#88ddff' : '#00ccff'
+
+  // Drift bar
+  if (driftTime > 0) {
+    driftBarEl.classList.add('active')
+    driftFillEl.style.width = Math.min(100, driftTime / 5 * 100) + '%'
+  } else {
+    driftBarEl.classList.remove('active')
+    driftFillEl.style.width = '0%'
+  }
+
+  // Coins + creatures + drift score
+  gameCoinsEl.textContent = 'Coins: ' + coinCount + (driftScore > 0 ? '  Drift: ' + driftScore : '')
+  if (creatureScore > 0) {
+    gameCreaturesEl.textContent = 'Creatures: ' + creatureScore
+  }
+
+  // Controls reference — context-sensitive
+  if (spaceMode) {
+    ctrlTitleEl.textContent = lastInputType === 'gamepad' ? 'SPACE FLIGHT (XBOX)' : 'SPACE FLIGHT'
+    ctrlBodyEl.innerHTML = lastInputType === 'gamepad'
+      ? 'RT Thrust \u2022 LS Steer<br>A Pitch Up \u2022 B Pitch Down<br>LT Brake \u2022 Start Menu'
+      : 'W Thrust \u2022 A/D Steer<br>Space Pitch Up \u2022 Shift Down<br>S Brake \u2022 ESC Menu'
+  } else if (onPlanet >= 0) {
+    ctrlTitleEl.textContent = 'PLANET SURFACE'
+    ctrlBodyEl.innerHTML = lastInputType === 'gamepad'
+      ? 'RT/LT Drive \u2022 LS Steer<br>A Boost (escape velocity!)<br>Drive to portal to go home'
+      : 'W/S Drive \u2022 A/D Steer<br>Space Boost (escape velocity!)<br>Drive to portal to go home'
+  } else if (lastInputType === 'gamepad') {
+    ctrlTitleEl.textContent = 'XBOX CONTROLLER'
+    ctrlBodyEl.innerHTML = 'RT/LT Drive \u2022 LS Steer<br>A Boost \u2022 B Jump<br>X Reset \u2022 Y Fireworks<br>Start Menu \u2022 RS Camera'
+  } else {
+    ctrlTitleEl.textContent = 'KEYBOARD'
+    ctrlBodyEl.innerHTML = 'W/S Drive \u2022 A/D Steer<br>Space Boost \u2022 R Reset<br>H Horn \u2022 ESC Menu'
+  }
 }
 
 // ════════════════════════════════════════════════════════════
@@ -1251,6 +1586,46 @@ let camOrbitX = 0, camOrbitY = 0 // right stick camera offset
 
 function updateCamera(dt) {
   const p = carBody.position
+
+  // ── Space flight camera ──
+  if (spaceMode) {
+    // Chase behind the flight direction
+    const behind = _spaceDir.clone().negate()
+    const spaceDist = 18 + Math.abs(carSpeed) * 0.08
+    const ideal = new THREE.Vector3(
+      p.x + behind.x * spaceDist + _spaceUp.x * 6,
+      p.y + behind.y * spaceDist + _spaceUp.y * 6,
+      p.z + behind.z * spaceDist + _spaceUp.z * 6
+    )
+    camPos.lerp(ideal, 1 - Math.pow(0.005, dt))
+    camera.position.copy(camPos)
+    camTarget.lerp(new THREE.Vector3(p.x, p.y, p.z), 1 - Math.pow(0.01, dt))
+    camera.lookAt(camTarget)
+    return
+  }
+
+  // ── Planet surface camera ──
+  if (onPlanet >= 0) {
+    const pd = planetData[onPlanet]
+    const surfUp = new THREE.Vector3().subVectors(p, pd.pos).normalize()
+    // Get car forward from quaternion
+    const carFwd = new THREE.Vector3(0, 0, 1).applyQuaternion(carGroup.quaternion)
+    const behind = carFwd.clone().negate()
+    const planDist = 14 + Math.abs(carSpeed) * 0.1
+    const ideal = new THREE.Vector3().copy(p)
+      .add(behind.multiplyScalar(planDist))
+      .add(surfUp.clone().multiplyScalar(6))
+    camPos.lerp(ideal, 1 - Math.pow(0.01, dt))
+    camera.position.copy(camPos)
+    camTarget.lerp(new THREE.Vector3(p.x, p.y, p.z), 1 - Math.pow(0.01, dt))
+    camera.lookAt(camTarget)
+    // Align camera up with surface normal for correct orientation
+    camera.up.copy(surfUp)
+    return
+  }
+
+  // ── Normal ground camera ──
+  camera.up.set(0, 1, 0) // reset up vector
 
   // Right joystick camera orbit
   const gp = navigator.getGamepads?.()[0]
@@ -1266,8 +1641,10 @@ function updateCamera(dt) {
 
   const viewAngle = carAngle + camOrbitX
   const back = new THREE.Vector3(Math.sin(viewAngle), 0, Math.cos(viewAngle))
-  const dist = 11 + Math.abs(carSpeed) * 0.15  // 10% further out
-  const height = 6.6 + Math.abs(carSpeed) * 0.09 + camOrbitY * 5
+  const baseDist = camDists[opts.camera] || 11
+  const baseHeight = camHeights[opts.camera] || 6.6
+  const dist = baseDist + Math.abs(carSpeed) * 0.15
+  const height = baseHeight + Math.abs(carSpeed) * 0.09 + camOrbitY * 5
 
   const ideal = new THREE.Vector3(p.x + back.x * dist, p.y + height, p.z + back.z * dist)
   camPos.lerp(ideal, 1 - Math.pow(0.02, dt))
@@ -1389,60 +1766,421 @@ function updateAurora(dt) {
 }
 
 // ════════════════════════════════════════════════════════════
-// FEATURE: SPEED WARP LINES — streaking light lines when boosting fast
+// FEATURE: WARP TUNNEL — edge-of-screen streaking lines
 // ════════════════════════════════════════════════════════════
 const warpLines = []
-const warpMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 })
-for (let i = 0; i < 30; i++) {
-  const geo = new THREE.BoxGeometry(0.04, 0.04, 3 + Math.random() * 5)
-  const line = new THREE.Mesh(geo, warpMat.clone())
+for (let i = 0; i < 40; i++) {
+  const len = 4 + Math.random() * 8
+  const geo = new THREE.BoxGeometry(0.05, 0.05, len)
+  const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 })
+  const line = new THREE.Mesh(geo, mat)
   line.visible = false
   scene.add(line)
+  const theta = (i / 40) * Math.PI * 2 + Math.random() * 0.15 // spread around ring
+  const radius = 8 + Math.random() * 5 // distance from camera center (screen edges)
   warpLines.push({
-    mesh: line,
-    offsetX: (Math.random() - 0.5) * 12,
-    offsetY: Math.random() * 6 + 1,
-    offsetZ: (Math.random() - 0.5) * 12,
-    speed: 20 + Math.random() * 30,
-    z: Math.random() * 20,
+    mesh: line, theta, radius, len,
+    speed: 30 + Math.random() * 40,
+    z: Math.random() * 25,
   })
 }
 
 function updateWarpLines(dt) {
   const spd = Math.abs(carSpeed)
-  const active = spd > 25 && boosting
+  // Active when: boosting fast, in space mode, or approaching a planet
+  const active = (spd > 25 && boosting) || spaceMode || _approachingPlanet
+  const intensity = spaceMode ? 1 : (spd > 25 ? Math.min(1, (spd - 25) / 20) : (_approachingPlanet ? 0.7 : 0))
+
   for (const w of warpLines) {
     w.mesh.visible = active
     if (!active) continue
-    // Position relative to car, streaking past
-    w.z -= w.speed * dt
-    if (w.z < -10) w.z = 10 + Math.random() * 10
-    w.mesh.position.set(
-      carBody.position.x + w.offsetX,
-      carBody.position.y + w.offsetY,
-      carBody.position.z + w.offsetZ + w.z
-    )
-    w.mesh.rotation.y = carAngle
-    const alpha = Math.min(1, (spd - 25) / 15) * 0.5
+    // Stream along camera forward direction, arranged in cylinder at screen edges
+    w.z -= w.speed * dt * (spaceMode ? 1.5 : 1)
+    if (w.z < -12) w.z = 12 + Math.random() * 15
+
+    // Position in camera-local cylinder
+    const cx = Math.cos(w.theta) * w.radius
+    const cy = Math.sin(w.theta) * w.radius
+    // Transform to world space using camera orientation
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion)
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion)
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion)
+
+    w.mesh.position.copy(camera.position)
+      .add(fwd.clone().multiplyScalar(w.z))
+      .add(right.clone().multiplyScalar(cx))
+      .add(up.clone().multiplyScalar(cy))
+    w.mesh.quaternion.copy(camera.quaternion)
+
+    const alpha = intensity * 0.5
     w.mesh.material.opacity = alpha
-    // Color shifts from white to blue at extreme speed
-    const hue = spd > 40 ? 0.6 : 0
-    w.mesh.material.color.setHSL(hue, spd > 40 ? 0.5 : 0, 1)
+    // Color: white → blue in space, orange when approaching planet
+    if (_approachingPlanet) {
+      w.mesh.material.color.setHex(0xff8844)
+    } else if (spaceMode) {
+      w.mesh.material.color.setHSL(0.6, 0.6, 0.8)
+    } else {
+      w.mesh.material.color.setHSL(0, 0, 1)
+    }
+  }
+}
+let _approachingPlanet = false
+
+// ════════════════════════════════════════════════════════════
+// OFF-MAP CHECK + SPACE MODE TRANSITIONS
+// ════════════════════════════════════════════════════════════
+function checkBounds() {
+  const p = carBody.position
+  const offMap = Math.abs(p.x) > 195 || Math.abs(p.z) > 195
+
+  // If on a planet, don't reset
+  if (onPlanet >= 0) return
+  // If airborne and going off-map, enter space mode
+  if (offMap && isAirborne) {
+    if (!spaceMode) enterSpaceMode()
+    return
+  }
+  // In space mode, check if returning to map
+  if (spaceMode) {
+    const distToHome = Math.sqrt(p.x*p.x + p.z*p.z)
+    if (distToHome < 190 && p.y < 20) {
+      exitSpaceMode()
+    }
+    return
+  }
+  // Normal ground check — only reset if on ground and way off
+  if (offMap || p.y < -10) {
+    carBody.position.set(0, 3, 0)
+    carBody.velocity.setZero()
+    carBody.angularVelocity.setZero()
+    carAngle = 0; carSpeed = 0
+    spaceMode = false; onPlanet = -1
+  }
+}
+
+function enterSpaceMode() {
+  spaceMode = true
+  // Preserve current orientation as initial space orientation
+  spacePitch = 0
+  spaceYaw = carAngle
+  // Disable cannon gravity on car (we'll do custom gravity)
+  carBody.type = CANNON.Body.KINEMATIC
+  // Deploy super glider
+  deploySuperGlider()
+}
+
+function exitSpaceMode() {
+  spaceMode = false
+  onPlanet = -1
+  // Restore physics
+  carBody.type = CANNON.Body.DYNAMIC
+  carBody.velocity.set(0, -5, 0) // gentle descent
+  carBody.angularVelocity.setZero()
+  carBody.quaternion.setFromEuler(0, carAngle, 0)
+  removeSuperGlider()
+  // Remove normal glider too
+  if (carGroup.userData.gliderL) {
+    carGroup.remove(carGroup.userData.gliderL)
+    carGroup.remove(carGroup.userData.gliderR)
+    delete carGroup.userData.gliderL
+    delete carGroup.userData.gliderR
+  }
+}
+
+// Super glider — large delta wings for space flight
+function deploySuperGlider() {
+  if (carGroup.userData.superGliderL) return
+  const gMat = new THREE.MeshStandardMaterial({ color: 0x44aaff, emissive: 0x2266ff, emissiveIntensity: 0.8, transparent: true, opacity: 0.7, side: THREE.DoubleSide })
+  // Delta wing left
+  const geoL = new THREE.BufferGeometry()
+  const vL = new Float32Array([0,0,carL*0.3, -carW*3,0,0, -carW*1.5,0,-carL*0.4, 0,0,-carL*0.3])
+  geoL.setAttribute('position', new THREE.BufferAttribute(vL,3)); geoL.setIndex([0,1,2,0,2,3]); geoL.computeVertexNormals()
+  const wL = new THREE.Mesh(geoL, gMat)
+  wL.position.set(-carW*0.3, carH*0.2, 0)
+  carGroup.add(wL)
+  carGroup.userData.superGliderL = wL
+  // Delta wing right
+  const geoR = new THREE.BufferGeometry()
+  const vR = new Float32Array([0,0,carL*0.3, carW*3,0,0, carW*1.5,0,-carL*0.4, 0,0,-carL*0.3])
+  geoR.setAttribute('position', new THREE.BufferAttribute(vR,3)); geoR.setIndex([0,1,2,0,2,3]); geoR.computeVertexNormals()
+  const wR = new THREE.Mesh(geoR, gMat)
+  wR.position.set(carW*0.3, carH*0.2, 0)
+  carGroup.add(wR)
+  carGroup.userData.superGliderR = wR
+  // Engine glow at rear
+  const eMat = new THREE.MeshBasicMaterial({ color: 0x44aaff, transparent: true, opacity: 0.6 })
+  const eng = new THREE.Mesh(new THREE.SphereGeometry(0.8, 6, 6), eMat)
+  eng.position.set(0, 0, carL*0.55)
+  carGroup.add(eng)
+  carGroup.userData.superGliderEng = eng
+  // Remove normal glider if present
+  if (carGroup.userData.gliderL) {
+    carGroup.remove(carGroup.userData.gliderL)
+    carGroup.remove(carGroup.userData.gliderR)
+    delete carGroup.userData.gliderL
+    delete carGroup.userData.gliderR
+  }
+}
+
+function removeSuperGlider() {
+  if (carGroup.userData.superGliderL) {
+    carGroup.remove(carGroup.userData.superGliderL)
+    carGroup.remove(carGroup.userData.superGliderR)
+    carGroup.remove(carGroup.userData.superGliderEng)
+    delete carGroup.userData.superGliderL
+    delete carGroup.userData.superGliderR
+    delete carGroup.userData.superGliderEng
   }
 }
 
 // ════════════════════════════════════════════════════════════
-// OFF-MAP CHECK
+// SPACE FLIGHT + PLANET SYSTEM
 // ════════════════════════════════════════════════════════════
-function checkBounds() {
-  const p = carBody.position
-  if (Math.abs(p.x) > 195 || Math.abs(p.z) > 195 || p.y < -10) {
-    carBody.position.set(0, 3, 0)
+const _spaceDir = new THREE.Vector3(0, 0, -1) // current flight direction
+const _spaceUp = new THREE.Vector3(0, 1, 0)
+const _spaceQuat = new THREE.Quaternion()
+let nearestPlanetIdx = -1
+let planetDiscoveryTimer = 0
+
+// HUD elements for space
+const spaceHudEl = document.createElement('div')
+spaceHudEl.style.cssText = 'position:fixed;top:50%;left:14px;transform:translateY(-50%);pointer-events:none;z-index:10;font-family:monospace;color:#44aaff;display:none'
+document.body.appendChild(spaceHudEl)
+
+// Home compass arrow
+const compassEl = document.createElement('div')
+compassEl.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);pointer-events:none;z-index:10;font:bold 0.8rem monospace;color:#44ff88;display:none;text-align:center'
+document.body.appendChild(compassEl)
+
+function updateSpaceFlight(dt) {
+  if (!spaceMode && onPlanet < 0) {
+    spaceHudEl.style.display = 'none'
+    compassEl.style.display = 'none'
+    _approachingPlanet = false
+    return
+  }
+
+  // Read inputs
+  const gp = navigator.getGamepads?.()[0]
+  const gpRT = gp?.buttons[7]?.value || 0
+  const gpLT = gp?.buttons[6]?.value || 0
+  const gpStickX = gp ? (Math.abs(gp.axes[0]) > 0.15 ? gp.axes[0] : 0) : 0
+  const gpStickY = gp ? (Math.abs(gp.axes[1]) > 0.15 ? gp.axes[1] : 0) : 0
+  const kbFwd = (keys['ArrowUp'] || keys['KeyW']) ? 1 : 0
+  const kbRev = (keys['ArrowDown'] || keys['KeyS']) ? 1 : 0
+  const kbLeft = (keys['ArrowLeft'] || keys['KeyA']) ? 1 : 0
+  const kbRight = (keys['ArrowRight'] || keys['KeyD']) ? 1 : 0
+  const pitchUp = keys['Space'] || gp?.buttons[0]?.pressed ? 1 : 0
+  const pitchDn = keys['ShiftLeft'] || gp?.buttons[1]?.pressed ? 1 : 0
+
+  // ── Planet on-surface driving ──
+  if (onPlanet >= 0) {
+    const pd = planetData[onPlanet]
+    const surfaceNormal = new THREE.Vector3().subVectors(carBody.position, pd.pos).normalize()
+    const surfaceDist = new THREE.Vector3().subVectors(carBody.position, pd.pos).length()
+
+    // Thrust
+    const thrust = (kbFwd || gpRT > 0.15) ? 1 : ((kbRev || gpLT > 0.15) ? -1 : 0)
+    const steer = (kbLeft - kbRight) || -gpStickX
+    boosting = keys['Space'] || gp?.buttons[0]?.pressed || false
+    const spdMul = boosting ? 2.5 : 1
+
+    if (thrust !== 0) {
+      carSpeed = Math.min(Math.max(carSpeed + thrust * accel * spdMul * dt, -maxSpeed * 0.4), maxSpeed * spdMul)
+    } else {
+      carSpeed *= (1 - 2 * dt)
+      if (Math.abs(carSpeed) < 0.1) carSpeed = 0
+    }
+
+    // Steering on sphere — rotate carAngle, but "forward" is tangent to sphere
+    if (Math.abs(carSpeed) > 0.5 && Math.abs(steer) > 0) {
+      carAngle += steer * turnSpeed * dt * Math.sign(carSpeed)
+    }
+
+    // Compute forward direction on sphere surface
+    // Start with a reference forward, project onto tangent plane
+    let fwd = new THREE.Vector3(-Math.sin(carAngle), 0, -Math.cos(carAngle))
+    // Project onto tangent plane (remove component along normal)
+    fwd.sub(surfaceNormal.clone().multiplyScalar(fwd.dot(surfaceNormal))).normalize()
+    if (fwd.lengthSq() < 0.01) fwd.set(1, 0, 0) // fallback
+
+    // Move along sphere surface
+    const vel = fwd.clone().multiplyScalar(carSpeed)
+    const newPos = new THREE.Vector3().copy(carBody.position).add(vel.clone().multiplyScalar(dt))
+    // Project back onto sphere surface
+    const toCenter = new THREE.Vector3().subVectors(newPos, pd.pos).normalize()
+    const targetDist = pd.radius + carH * 0.5
+
+    // Check if trying to escape (boost while going fast upward concept)
+    if (boosting && Math.abs(carSpeed) > maxSpeed * 1.5) {
+      // Escape velocity! Launch off planet
+      onPlanet = -1
+      enterSpaceMode()
+      carBody.position.copy(newPos.add(toCenter.clone().multiplyScalar(10)))
+      _spaceDir.copy(toCenter)
+      return
+    }
+
+    newPos.copy(pd.pos).add(toCenter.multiplyScalar(targetDist))
+    carBody.position.copy(newPos)
     carBody.velocity.setZero()
     carBody.angularVelocity.setZero()
-    carAngle = 0
-    carSpeed = 0
+
+    // Orient car: up = surface normal, forward = fwd direction
+    const right = new THREE.Vector3().crossVectors(surfaceNormal, fwd).normalize()
+    fwd.crossVectors(right, surfaceNormal).normalize()
+    const m = new THREE.Matrix4().makeBasis(right, surfaceNormal, fwd.negate())
+    carBody.quaternion.copy(new CANNON.Quaternion().copy(new THREE.Quaternion().setFromRotationMatrix(m)))
+
+    // Check return portal
+    const portalDist = new THREE.Vector3().subVectors(carBody.position, pd.portal.position).length()
+    if (portalDist < 5) {
+      // Teleport home
+      onPlanet = -1
+      spaceMode = false
+      carBody.type = CANNON.Body.DYNAMIC
+      carBody.position.set(0, 5, 0)
+      carBody.velocity.setZero()
+      carBody.angularVelocity.setZero()
+      carAngle = 0; carSpeed = 0
+      removeSuperGlider()
+      puToast.textContent = 'RETURNED HOME'
+      puToast.style.color = '#44ff88'
+      puToast.style.opacity = '1'
+      setTimeout(() => puToast.style.opacity = '0', 2000)
+    }
+
+    // Pulse return portal
+    pd.portal.material.emissiveIntensity = 2 + Math.sin(performance.now() * 0.005) * 1.5
+
+    // HUD info
+    spaceHudEl.style.display = 'block'
+    spaceHudEl.innerHTML = '<div style="color:#ffd700;font-size:1.1rem;margin-bottom:4px">' + pd.name.toUpperCase() + '</div><div style="font-size:0.75rem;color:#88ff88">Portal: ' + Math.floor(portalDist) + 'm</div>'
+    compassEl.style.display = 'none'
+    gameModeEl.textContent = pd.name.toUpperCase()
+    return
   }
+
+  // ── Free space flight ──
+  spaceHudEl.style.display = 'block'
+  compassEl.style.display = 'block'
+
+  // Yaw (left/right)
+  const yawInput = (kbLeft - kbRight) || -gpStickX
+  // Pitch (up/down)
+  const pitchInput = (pitchUp - pitchDn) || -gpStickY
+  // Thrust
+  const thrustInput = (kbFwd || gpRT > 0.15) ? 1 : ((kbRev || gpLT > 0.15) ? -0.3 : 0)
+
+  // Update orientation
+  spaceYaw += yawInput * 2.5 * dt
+  spacePitch = Math.max(-Math.PI * 0.45, Math.min(Math.PI * 0.45, spacePitch + pitchInput * 2 * dt))
+
+  // Compute flight direction from yaw + pitch
+  _spaceDir.set(
+    -Math.sin(spaceYaw) * Math.cos(spacePitch),
+    Math.sin(spacePitch),
+    -Math.cos(spaceYaw) * Math.cos(spacePitch)
+  ).normalize()
+
+  // Speed
+  boosting = keys['Space'] || gp?.buttons[0]?.pressed || false
+  const spaceMaxSpeed = boosting ? 120 : 50
+  if (thrustInput > 0) {
+    carSpeed = Math.min(carSpeed + 30 * dt * (boosting ? 3 : 1), spaceMaxSpeed)
+  } else if (thrustInput < 0) {
+    carSpeed = Math.max(carSpeed - 20 * dt, 0)
+  } else {
+    carSpeed *= (1 - 0.5 * dt) // slow drift-down in space
+  }
+
+  // Move
+  const spaceVel = _spaceDir.clone().multiplyScalar(carSpeed)
+  carBody.position.x += spaceVel.x * dt
+  carBody.position.y += spaceVel.y * dt
+  carBody.position.z += spaceVel.z * dt
+  carBody.velocity.setZero()
+
+  // Orient car to flight direction
+  _spaceUp.set(0, 1, 0)
+  const right = new THREE.Vector3().crossVectors(_spaceDir, _spaceUp).normalize()
+  if (right.lengthSq() < 0.01) right.set(1, 0, 0)
+  _spaceUp.crossVectors(right, _spaceDir).normalize()
+  const rotMat = new THREE.Matrix4().makeBasis(right, _spaceUp, _spaceDir.clone().negate())
+  _spaceQuat.setFromRotationMatrix(rotMat)
+  carBody.quaternion.set(_spaceQuat.x, _spaceQuat.y, _spaceQuat.z, _spaceQuat.w)
+
+  // Engine glow pulse
+  if (carGroup.userData.superGliderEng) {
+    const eng = carGroup.userData.superGliderEng
+    const glow = 0.3 + (carSpeed / spaceMaxSpeed) * 0.7
+    eng.material.opacity = glow
+    eng.scale.setScalar(0.8 + (carSpeed / spaceMaxSpeed) * 1.5)
+  }
+
+  // ── Planet proximity check ──
+  nearestPlanetIdx = -1
+  let nearestDist = Infinity
+  _approachingPlanet = false
+  for (let i = 0; i < planetData.length; i++) {
+    const pd = planetData[i]
+    const dist = new THREE.Vector3().subVectors(carBody.position, pd.pos).length()
+    if (dist < nearestDist) { nearestDist = dist; nearestPlanetIdx = i }
+
+    // Approaching — within 4x radius
+    if (dist < pd.radius * 4) {
+      _approachingPlanet = true
+    }
+
+    // Landing — within radius + buffer
+    if (dist < pd.radius + 8) {
+      // Land on planet!
+      onPlanet = i
+      spaceMode = false
+      carBody.type = CANNON.Body.KINEMATIC
+      carSpeed = Math.min(carSpeed, 10) // slow down on landing
+
+      // Place on surface
+      const toSurface = new THREE.Vector3().subVectors(carBody.position, pd.pos).normalize()
+      carBody.position.copy(pd.pos).add(toSurface.multiplyScalar(pd.radius + carH * 0.5))
+
+      // Discovery popup
+      if (!pd.discovered) {
+        pd.discovered = true
+        puToast.textContent = 'DISCOVERED: ' + pd.name.toUpperCase() + '!'
+        puToast.style.color = '#ffd700'
+        puToast.style.opacity = '1'
+        setTimeout(() => puToast.style.opacity = '0', 3000)
+        spawnFireworks()
+      }
+      removeSuperGlider()
+      return
+    }
+  }
+
+  // HUD — nearest planet info + compass
+  if (nearestPlanetIdx >= 0) {
+    const pd = planetData[nearestPlanetIdx]
+    const dist = Math.floor(nearestDist)
+    const approaching = nearestDist < pd.radius * 4
+    spaceHudEl.innerHTML = '<div style="color:#44aaff;font-size:0.85rem;margin-bottom:4px">SPACE FLIGHT</div>' +
+      '<div style="color:' + (approaching ? '#ffaa00' : '#888') + ';font-size:0.75rem">' +
+      (approaching ? 'APPROACHING ' : 'Nearest: ') + pd.name + '</div>' +
+      '<div style="font-size:0.7rem;color:#666">Distance: ' + dist + 'm</div>'
+  }
+
+  // Home compass
+  const homeDir = new THREE.Vector3(-carBody.position.x, -carBody.position.y, -carBody.position.z).normalize()
+  const homeDist = Math.floor(Math.sqrt(carBody.position.x**2 + carBody.position.y**2 + carBody.position.z**2))
+  // Project home direction to screen space for arrow
+  const screenHome = homeDir.clone().project(camera)
+  const angle = Math.atan2(screenHome.y, screenHome.x)
+  const arrows = ['\u2192','\u2197','\u2191','\u2196','\u2190','\u2199','\u2193','\u2198']
+  const arrowIdx = Math.round(((angle + Math.PI) / (Math.PI * 2)) * 8) % 8
+  compassEl.innerHTML = '<span style="font-size:1.2rem">' + arrows[arrowIdx] + '</span> HOME ' + homeDist + 'm'
+  compassEl.style.display = 'block'
+
+  gameModeEl.textContent = 'SPACE FLIGHT'
 }
 
 // ════════════════════════════════════════════════════════════
@@ -1468,7 +2206,8 @@ function loop() {
   }
 
   updateCar(dt)
-  world.step(1/60, dt, 3)
+  updateSpaceFlight(dt)
+  if (!spaceMode && onPlanet < 0) world.step(1/60, dt, 3)
 
   carGroup.position.copy(carBody.position)
   carGroup.quaternion.copy(carBody.quaternion)
@@ -1494,6 +2233,7 @@ function loop() {
   updateFireworks(dt)
   updateTrail(dt)
   updateCoins()
+  updateHUD(dt)
   checkBounds()
 
   if (menuOpen) { renderer.render(scene, camera); return } // still render but don't process input further
