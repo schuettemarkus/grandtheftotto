@@ -2098,20 +2098,21 @@ function updateCamera(dt) {
   // ── Planet surface camera — close chase for curved racetrack feel ──
   if (onPlanet >= 0) {
     const pd = planetData[onPlanet]
-    const surfUp = new THREE.Vector3().subVectors(p, pd.pos).normalize()
-    // Get car forward from quaternion (car drives toward -Z locally)
-    const carFwd = new THREE.Vector3(0, 0, -1).applyQuaternion(carGroup.quaternion)
-    const behind = carFwd.clone().negate()
-    // Tight camera — close and low for racetrack illusion
+    const surfUp = _tv1.subVectors(p, pd.pos).normalize()
+    // Compute car's driving direction from carAngle projected onto sphere tangent
+    const driveFwd = _tv2.set(-Math.sin(carAngle), 0, -Math.cos(carAngle))
+    driveFwd.addScaledVector(surfUp, -driveFwd.dot(surfUp)).normalize()
+    if (driveFwd.lengthSq() < 0.01) driveFwd.set(1, 0, 0)
+    // Camera behind the car, slightly above
     const planDist = 10 + Math.abs(carSpeed) * 0.08
     const planHeight = 4 + Math.abs(carSpeed) * 0.04
-    const ideal = new THREE.Vector3().copy(p)
-      .add(behind.multiplyScalar(planDist))
-      .add(surfUp.clone().multiplyScalar(planHeight))
+    const ideal = _tv3.copy(p)
+      .addScaledVector(driveFwd, -planDist)
+      .addScaledVector(surfUp, planHeight)
     camPos.lerp(ideal, 1 - Math.pow(0.005, dt))
     camera.position.copy(camPos)
-    // Look slightly ahead of the car for forward visibility
-    const lookAhead = new THREE.Vector3().copy(p).add(carFwd.clone().multiplyScalar(5))
+    // Look ahead of the car
+    const lookAhead = _tv4.copy(p).addScaledVector(driveFwd, 5)
     camTarget.lerp(lookAhead, 1 - Math.pow(0.01, dt))
     camera.lookAt(camTarget)
     camera.up.copy(surfUp)
@@ -2739,13 +2740,15 @@ function updateSpaceFlight(dt) {
     carBody.velocity.setZero()
     carBody.angularVelocity.setZero()
 
-    // Orient car: up = surface normal
+    // Orient car: up = surface normal, forward = driving direction
     const carFwd = _tv3.set(-Math.sin(carAngle), 0, -Math.cos(carAngle))
     carFwd.addScaledVector(surfUp, -carFwd.dot(surfUp)).normalize()
     if (carFwd.lengthSq() < 0.01) carFwd.set(1, 0, 0)
     const carRight = _tv4.crossVectors(surfUp, carFwd).normalize()
     carFwd.crossVectors(carRight, surfUp).normalize()
-    _tm1.makeBasis(carRight, surfUp, carFwd.negate())
+    // Z-basis should be -forward (Three.js convention: object looks toward -Z)
+    const carBack = _tv5.copy(carFwd).negate()
+    _tm1.makeBasis(carRight, surfUp, carBack)
     _tq1.setFromRotationMatrix(_tm1)
     carBody.quaternion.set(_tq1.x, _tq1.y, _tq1.z, _tq1.w)
 
@@ -2784,9 +2787,10 @@ function updateSpaceFlight(dt) {
       return
     }
 
-    // HUD
+    // HUD (textContent — no DOM reparse)
     spaceHudEl.style.display = 'block'
-    spaceHudEl.innerHTML = '<div style="color:#ffd700;font-size:1.1rem;margin-bottom:4px">' + pd.name.toUpperCase() + '</div><div style="font-size:0.65rem;color:#aaa">B/R launch off \u2022 Y go home</div>'
+    spaceHudEl.textContent = pd.name.toUpperCase() + '  |  B/R launch off \u2022 Y home'
+    spaceHudEl.style.color = '#ffd700'
     compassEl.style.display = 'none'
     gameModeEl.textContent = pd.name.toUpperCase()
     return
@@ -2821,37 +2825,34 @@ function updateSpaceFlight(dt) {
   boosting = keys['Space'] || gp?.buttons[0]?.pressed || false
   const spaceMaxSpeed = boosting || autoHome ? 120 : 50
   if (autoHome) {
-    // Auto-pilot toward home — override direction to point at origin
-    const homeTarget = new THREE.Vector3(-carBody.position.x, -carBody.position.y, -carBody.position.z).normalize()
-    // Smoothly rotate toward home
-    _spaceDir.lerp(homeTarget, dt * 3).normalize()
-    // Recompute yaw/pitch from direction so releasing Y continues smoothly
+    // Auto-pilot toward home
+    _tv1.set(-carBody.position.x, -carBody.position.y, -carBody.position.z).normalize()
+    _spaceDir.lerp(_tv1, dt * 3).normalize()
     spaceYaw = Math.atan2(-_spaceDir.x, -_spaceDir.z)
     spacePitch = Math.asin(Math.max(-1, Math.min(1, _spaceDir.y)))
-    // Full speed toward home
     carSpeed = Math.min(carSpeed + 60 * dt, spaceMaxSpeed)
   } else if (thrustInput > 0) {
     carSpeed = Math.min(carSpeed + 30 * dt * (boosting ? 3 : 1), spaceMaxSpeed)
   } else if (thrustInput < 0) {
     carSpeed = Math.max(carSpeed - 20 * dt, 0)
   } else {
-    carSpeed *= (1 - 0.5 * dt) // slow drift-down in space
+    carSpeed *= (1 - 0.5 * dt)
   }
 
-  // Move
-  const spaceVel = _spaceDir.clone().multiplyScalar(carSpeed)
-  carBody.position.x += spaceVel.x * dt
-  carBody.position.y += spaceVel.y * dt
-  carBody.position.z += spaceVel.z * dt
+  // Move (no allocations)
+  carBody.position.x += _spaceDir.x * carSpeed * dt
+  carBody.position.y += _spaceDir.y * carSpeed * dt
+  carBody.position.z += _spaceDir.z * carSpeed * dt
   carBody.velocity.setZero()
 
-  // Orient car to flight direction
+  // Orient car to flight direction (pooled objects)
   _spaceUp.set(0, 1, 0)
-  const right = new THREE.Vector3().crossVectors(_spaceDir, _spaceUp).normalize()
-  if (right.lengthSq() < 0.01) right.set(1, 0, 0)
-  _spaceUp.crossVectors(right, _spaceDir).normalize()
-  const rotMat = new THREE.Matrix4().makeBasis(right, _spaceUp, _spaceDir.clone().negate())
-  _spaceQuat.setFromRotationMatrix(rotMat)
+  _tv1.crossVectors(_spaceDir, _spaceUp).normalize()
+  if (_tv1.lengthSq() < 0.01) _tv1.set(1, 0, 0)
+  _spaceUp.crossVectors(_tv1, _spaceDir).normalize()
+  _tv2.copy(_spaceDir).negate()
+  _tm1.makeBasis(_tv1, _spaceUp, _tv2)
+  _spaceQuat.setFromRotationMatrix(_tm1)
   carBody.quaternion.set(_spaceQuat.x, _spaceQuat.y, _spaceQuat.z, _spaceQuat.w)
 
   // Engine glow pulse
@@ -2862,38 +2863,30 @@ function updateSpaceFlight(dt) {
     eng.scale.setScalar(0.8 + (carSpeed / spaceMaxSpeed) * 1.5)
   }
 
-  // ── Planet proximity check ──
+  // ── Planet proximity check (pooled vector) ──
   nearestPlanetIdx = -1
   let nearestDist = Infinity
   _approachingPlanet = false
   for (let i = 0; i < planetData.length; i++) {
     const pd = planetData[i]
-    const dist = new THREE.Vector3().subVectors(carBody.position, pd.pos).length()
+    const dx = carBody.position.x - pd.pos.x
+    const dy = carBody.position.y - pd.pos.y
+    const dz = carBody.position.z - pd.pos.z
+    const dist = Math.sqrt(dx*dx + dy*dy + dz*dz)
     if (dist < nearestDist) { nearestDist = dist; nearestPlanetIdx = i }
+    if (dist < pd.radius * 4) _approachingPlanet = true
 
-    // Approaching — within 4x radius
-    if (dist < pd.radius * 4) {
-      _approachingPlanet = true
-    }
-
-    // Landing — within radius + generous buffer so car doesn't clip into planet
+    // Landing
     if (dist < pd.radius + 15) {
-      // Land on planet — enter rounded surface driving mode
       onPlanet = i
       spaceMode = false
       carBody.type = CANNON.Body.KINEMATIC
       carSpeed = Math.min(Math.abs(carSpeed), 15) * Math.sign(carSpeed || 1)
-
-      // Place safely on surface (not inside)
-      const toSurface = _tv1.subVectors(carBody.position, pd.pos).normalize()
-      carBody.position.copy(pd.pos).addScaledVector(toSurface, pd.radius + carH * 0.5 + 1)
+      _tv1.set(dx, dy, dz).normalize()
+      carBody.position.copy(pd.pos).addScaledVector(_tv1, pd.radius + carH * 0.5 + 1)
       carBody.velocity.setZero()
       carBody.angularVelocity.setZero()
-
-      // Init local planet coordinates
       pd._localX = 0; pd._localZ = 0
-
-      // Discovery popup
       if (!pd.discovered) {
         pd.discovered = true
         puToast.textContent = 'DISCOVERED: ' + pd.name.toUpperCase() + '!'
@@ -2907,28 +2900,23 @@ function updateSpaceFlight(dt) {
     }
   }
 
-  // HUD — nearest planet info + compass
+  // HUD — update textContent (not innerHTML) to avoid DOM reparse
   if (nearestPlanetIdx >= 0) {
     const pd = planetData[nearestPlanetIdx]
-    const dist = Math.floor(nearestDist)
     const approaching = nearestDist < pd.radius * 4
-    spaceHudEl.innerHTML = '<div style="color:#44aaff;font-size:0.85rem;margin-bottom:4px">SPACE FLIGHT</div>' +
-      '<div style="color:' + (approaching ? '#ffaa00' : '#888') + ';font-size:0.75rem">' +
-      (approaching ? 'APPROACHING ' : 'Nearest: ') + pd.name + '</div>' +
-      '<div style="font-size:0.7rem;color:#666">Distance: ' + dist + 'm</div>'
+    spaceHudEl.textContent = (approaching ? 'APPROACHING ' : 'Nearest: ') + pd.name + '  ' + Math.floor(nearestDist) + 'm'
+    spaceHudEl.style.color = approaching ? '#ffaa00' : '#44aaff'
   }
 
-  // Home compass
-  const homeDir = new THREE.Vector3(-carBody.position.x, -carBody.position.y, -carBody.position.z).normalize()
-  const homeDist = Math.floor(Math.sqrt(carBody.position.x**2 + carBody.position.y**2 + carBody.position.z**2))
-  // Project home direction to screen space for arrow
-  const screenHome = homeDir.clone().project(camera)
-  const angle = Math.atan2(screenHome.y, screenHome.x)
-  const arrows = ['\u2192','\u2197','\u2191','\u2196','\u2190','\u2199','\u2193','\u2198']
+  // Home compass (no allocations)
+  const hx = -carBody.position.x, hy = -carBody.position.y, hz = -carBody.position.z
+  const homeDist = Math.floor(Math.sqrt(hx*hx + hy*hy + hz*hz))
+  _tv1.set(hx, hy, hz).normalize().project(camera)
+  const angle = Math.atan2(_tv1.y, _tv1.x)
+  const arrows = '\u2192\u2197\u2191\u2196\u2190\u2199\u2193\u2198'
   const arrowIdx = Math.round(((angle + Math.PI) / (Math.PI * 2)) * 8) % 8
-  const autoLabel = autoHome ? ' <span style="color:#ffd700">RETURNING...</span>' : ''
-  compassEl.innerHTML = '<span style="font-size:1.2rem">' + arrows[arrowIdx] + '</span> HOME ' + homeDist + 'm' + autoLabel
-  compassEl.style.display = 'block'
+  compassEl.textContent = arrows[arrowIdx] + ' HOME ' + homeDist + 'm' + (autoHome ? ' RETURNING...' : '')
+  compassEl.style.color = autoHome ? '#ffd700' : '#44ff88'
 
   gameModeEl.textContent = 'SPACE FLIGHT'
 }
