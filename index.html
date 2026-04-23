@@ -33,6 +33,7 @@ canvas{display:block;position:fixed;top:0;left:0}
     <button id="opt-resume" style="margin-top:18px;padding:10px 32px;background:#ffd700;color:#111;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:1rem">RESUME</button>
   </div>
 </div>
+<div id="hit-flash" style="position:fixed;inset:0;background:rgba(255,0,0,0.3);pointer-events:none;z-index:9;opacity:0;transition:opacity 0.15s"></div>
 <div id="hud">
   <div class="speed" id="spd">0 km/h</div>
   <div class="info">WASD / Arrows: Drive &nbsp; Space: Boost &nbsp; R: Reset</div>
@@ -95,7 +96,40 @@ world.addContactMaterial(new CANNON.ContactMaterial(groundMat, carMat, {
 
 // ── Ground ──
 const floorGeo = new THREE.PlaneGeometry(400, 400)
-const floorMeshMat = new THREE.MeshStandardMaterial({ color: 0x559944, roughness: 0.9 })
+// Futuristic ground texture — subtle hex grid pattern
+const floorTex = (function() {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 256
+  const x = c.getContext('2d')
+  x.fillStyle = '#4a8a3a'; x.fillRect(0, 0, 256, 256)
+  // Hex grid lines
+  x.strokeStyle = 'rgba(100,200,80,0.12)'; x.lineWidth = 1
+  const hexR = 24
+  for (let row = -1; row < 12; row++) {
+    for (let col = -1; col < 8; col++) {
+      const cx = col * hexR * 1.73 + (row % 2) * hexR * 0.866
+      const cy = row * hexR * 1.5
+      x.beginPath()
+      for (let i = 0; i < 6; i++) {
+        const a = Math.PI / 3 * i - Math.PI / 6
+        const px = cx + hexR * Math.cos(a), py = cy + hexR * Math.sin(a)
+        i === 0 ? x.moveTo(px, py) : x.lineTo(px, py)
+      }
+      x.closePath(); x.stroke()
+    }
+  }
+  // Subtle glow dots at intersections
+  x.fillStyle = 'rgba(150,255,120,0.06)'
+  for (let row = 0; row < 10; row++) for (let col = 0; col < 7; col++) {
+    const cx = col * hexR * 1.73 + (row % 2) * hexR * 0.866
+    const cy = row * hexR * 1.5
+    x.beginPath(); x.arc(cx, cy, 3, 0, Math.PI * 2); x.fill()
+  }
+  const tex = new THREE.CanvasTexture(c)
+  tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping
+  tex.repeat.set(30, 30)
+  return tex
+})()
+const floorMeshMat = new THREE.MeshStandardMaterial({ color: 0x559944, roughness: 0.85, map: floorTex })
 const floor = new THREE.Mesh(floorGeo, floorMeshMat)
 floor.rotation.x = -Math.PI / 2
 floor.receiveShadow = true
@@ -308,6 +342,29 @@ for (const s of [-1, 1]) {
   carGroup.add(tl)
 }
 
+// Subaru logo on rear
+const subaruLogoTex = (function() {
+  const c = document.createElement('canvas'); c.width = 64; c.height = 64
+  const x = c.getContext('2d')
+  // Blue oval background
+  x.fillStyle = '#003399'
+  x.beginPath(); x.ellipse(32, 32, 28, 22, 0, 0, Math.PI * 2); x.fill()
+  x.strokeStyle = '#6699cc'; x.lineWidth = 2; x.stroke()
+  // Pleiades stars (6 stars — Subaru means "unite" in Japanese, the star cluster)
+  x.fillStyle = '#ffffff'
+  const stars = [[32,14],[22,22],[42,22],[18,34],[32,30],[46,34]]
+  for (const [sx, sy] of stars) { x.beginPath(); x.arc(sx, sy, 2.5, 0, Math.PI*2); x.fill() }
+  // Larger main star
+  x.beginPath(); x.arc(32, 14, 3.5, 0, Math.PI*2); x.fill()
+  return new THREE.CanvasTexture(c)
+})()
+const subaruBadge = new THREE.Mesh(
+  new THREE.PlaneGeometry(carW * 0.3, carW * 0.24),
+  new THREE.MeshBasicMaterial({ map: subaruLogoTex, transparent: true })
+)
+subaruBadge.position.set(0, carH * 0.15, carL * 0.501)
+carGroup.add(subaruBadge)
+
 // Wheels (visual only — physics is the box sliding)
 const wheelGeo = new THREE.CylinderGeometry(0.9, 0.9, 0.6, 12)
 wheelGeo.rotateZ(Math.PI / 2)
@@ -444,7 +501,7 @@ function mp(geo, mat, x, y, z, ud) {
 function buildCreature(type) {
   const g = new THREE.Group()
   if (type === 'dinosaur') {
-    const s = 3
+    const s = 9
     const bm = new THREE.MeshStandardMaterial({ color: 0x2e8b57, roughness: 0.7, flatShading: true })
     const dm = new THREE.MeshStandardMaterial({ color: 0x1a5a35, roughness: 0.7, flatShading: true })
     const em = new THREE.MeshStandardMaterial({ color: 0xffcc00, emissive: 0xffcc00, emissiveIntensity: 0.5 })
@@ -458,7 +515,7 @@ function buildCreature(type) {
     for (let i=0;i<6;i++) g.add(mp(new THREE.ConeGeometry(s*0.06,s*0.2,4), new THREE.MeshStandardMaterial({color:0x3a7a4a,flatShading:true}), 0,s*1.35,-s*0.4+i*s*0.35))
   }
   else if (type === 'dragon') {
-    const s = 2.5
+    const s = 7.5
     const bm = new THREE.MeshStandardMaterial({ color: 0x8b0000, roughness: 0.6, flatShading: true })
     const wm = new THREE.MeshStandardMaterial({ color: 0xa01020, roughness: 0.7, flatShading: true, side: THREE.DoubleSide })
     g.add(mp(new THREE.BoxGeometry(s*0.6,s*0.5,s*1.3), bm, 0,s*1.2,0))
@@ -479,7 +536,7 @@ function buildCreature(type) {
     g.add(fire)
   }
   else if (type === 'wolf') {
-    const s = 1.2
+    const s = 3.6
     const bm = new THREE.MeshStandardMaterial({ color: 0x696969, roughness: 0.8, flatShading: true })
     const lm = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.8, flatShading: true })
     g.add(mp(new THREE.BoxGeometry(s*0.5,s*0.45,s*1.1), bm, 0,s*0.55,0))
@@ -620,6 +677,18 @@ function updateCreatures(dt) {
 
     c.x = Math.max(-180, Math.min(180, c.x))
     c.z = Math.max(-180, Math.min(180, c.z))
+
+    // Collision: car hits creature (not giant mode) — bounce off + red flash
+    if (!isGiant && dist < 5 && Math.abs(carSpeed) > 3) {
+      // Bounce car away
+      const bx = -dx / (dist || 1), bz = -dz / (dist || 1)
+      carBody.velocity.set(bx * 8, 3, bz * 8)
+      carSpeed *= -0.3
+      // Red flash
+      const flash = document.getElementById('hit-flash')
+      flash.style.opacity = '1'
+      setTimeout(() => flash.style.opacity = '0', 200)
+    }
 
     // Dino stomp
     const stompY = c.type === 'dinosaur' ? Math.abs(Math.sin(c.anim * 1.5)) * 0.3 : 0
@@ -812,8 +881,8 @@ for (let i = 0; i < 22; i++) {
   // Billboard sprite with icon texture
   const mat = new THREE.SpriteMaterial({ map: puIcons[t.effect], transparent: true, depthTest: false })
   const mesh = new THREE.Sprite(mat)
-  mesh.scale.set(4, 4, 1)
-  mesh.position.set(x, 3, z)
+  mesh.scale.set(8, 8, 1)
+  mesh.position.set(x, 4, z)
   scene.add(mesh)
   powerupMeshes.push({ mesh, type: t, x, z, collected: false, bob: Math.random()*Math.PI*2 })
 }
@@ -824,10 +893,9 @@ function updatePowerups(dt) {
   for (const p of powerupMeshes) {
     if (p.collected) continue
     p.bob += dt * 3
-    p.mesh.position.y = 3 + Math.sin(p.bob) * 0.6
-    // Pulse scale for visibility
+    p.mesh.position.y = 4 + Math.sin(p.bob) * 0.6
     const pulse = 1 + Math.sin(p.bob * 2) * 0.15
-    p.mesh.scale.set(4 * pulse, 4 * pulse, 1)
+    p.mesh.scale.set(8 * pulse, 8 * pulse, 1)
     const dx = px - p.x, dz = pz - p.z
     if (dx*dx+dz*dz < 9) {
       p.collected = true; p.mesh.visible = false
@@ -1114,13 +1182,28 @@ function updateCar(dt) {
 // CAMERA — chase cam
 // ════════════════════════════════════════════════════════════
 const camTarget = new THREE.Vector3()
-const camPos = new THREE.Vector3(0, 12, 15)
+const camPos = new THREE.Vector3(0, 14, 18)
+let camOrbitX = 0, camOrbitY = 0 // right stick camera offset
 
 function updateCamera(dt) {
   const p = carBody.position
-  const back = new THREE.Vector3(Math.sin(carAngle), 0, Math.cos(carAngle))
-  const dist = 10 + Math.abs(carSpeed) * 0.15
-  const height = 6 + Math.abs(carSpeed) * 0.08
+
+  // Right joystick camera orbit
+  const gp = navigator.getGamepads?.()[0]
+  if (gp) {
+    const rsX = Math.abs(gp.axes[2]) > 0.15 ? gp.axes[2] : 0
+    const rsY = Math.abs(gp.axes[3]) > 0.15 ? gp.axes[3] : 0
+    camOrbitX += rsX * dt * 3
+    camOrbitY = Math.max(-0.5, Math.min(0.8, camOrbitY + rsY * dt * 2))
+  }
+  // Decay orbit back to center when stick released
+  camOrbitX *= (1 - dt * 2)
+  camOrbitY *= (1 - dt * 2)
+
+  const viewAngle = carAngle + camOrbitX
+  const back = new THREE.Vector3(Math.sin(viewAngle), 0, Math.cos(viewAngle))
+  const dist = 11 + Math.abs(carSpeed) * 0.15  // 10% further out
+  const height = 6.6 + Math.abs(carSpeed) * 0.09 + camOrbitY * 5
 
   const ideal = new THREE.Vector3(p.x + back.x * dist, p.y + height, p.z + back.z * dist)
   camPos.lerp(ideal, 1 - Math.pow(0.02, dt))
