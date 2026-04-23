@@ -420,11 +420,11 @@ function addPlanet(x, y, z, radius, color, ringColor, name) {
   return planet
 }
 const planets = [
-  addPlanet(-350, 200, -500, 40, 0xcc6633, 0xddaa66, 'Saturn'),
-  addPlanet(400, 150, -400, 25, 0x4466cc, null, 'Neptune'),
-  addPlanet(-200, 300, 500, 18, 0xcc3333, null, 'Mars'),
-  addPlanet(500, -100, 300, 55, 0x886644, 0xaa9977, 'Jupiter'),
-  addPlanet(0, 400, -600, 12, 0x88ffaa, null, 'Emerald Moon'),
+  addPlanet(-500, 300, -700, 120, 0xcc6633, 0xddaa66, 'Saturn'),
+  addPlanet(600, 250, -600, 75, 0x4466cc, null, 'Neptune'),
+  addPlanet(-350, 450, 700, 54, 0xcc3333, null, 'Mars'),
+  addPlanet(700, -150, 500, 165, 0x886644, 0xaa9977, 'Jupiter'),
+  addPlanet(0, 600, -900, 36, 0x88ffaa, null, 'Emerald Moon'),
 ]
 
 // Nebula glow clouds
@@ -1830,13 +1830,13 @@ function updateHUD(dt) {
   if (spaceMode) {
     ctrlTitleEl.textContent = lastInputType === 'gamepad' ? 'SPACE FLIGHT (XBOX)' : 'SPACE FLIGHT'
     ctrlBodyEl.innerHTML = lastInputType === 'gamepad'
-      ? 'RT Thrust \u2022 LS Steer<br>A Pitch Up \u2022 B Pitch Down<br>LT Brake \u2022 Start Menu'
-      : 'W Thrust \u2022 A/D Steer<br>Space Pitch Up \u2022 Shift Down<br>S Brake \u2022 ESC Menu'
+      ? 'RT Thrust \u2022 LS Steer<br>A Pitch Down \u2022 B Pitch Up<br>Y Auto-Return Home<br>LT Brake \u2022 Start Menu'
+      : 'W Thrust \u2022 A/D Steer<br>Space Pitch Down \u2022 Shift Up<br>Y Auto-Return Home<br>S Brake \u2022 ESC Menu'
   } else if (onPlanet >= 0) {
     ctrlTitleEl.textContent = 'PLANET SURFACE'
     ctrlBodyEl.innerHTML = lastInputType === 'gamepad'
-      ? 'RT/LT Drive \u2022 LS Steer<br>A Boost (escape velocity!)<br>Drive to portal to go home'
-      : 'W/S Drive \u2022 A/D Steer<br>Space Boost (escape velocity!)<br>Drive to portal to go home'
+      ? 'RT/LT Drive \u2022 LS Steer<br>B Launch Off \u2022 A Boost<br>Drive to portal for home'
+      : 'W/S Drive \u2022 A/D Steer<br>R Launch Off \u2022 Space Boost<br>Drive to portal for home'
   } else if (lastInputType === 'gamepad') {
     ctrlTitleEl.textContent = 'XBOX CONTROLLER'
     ctrlBodyEl.innerHTML = 'RT/LT Drive \u2022 LS Steer<br>A Boost \u2022 B Jump<br>X Reset \u2022 Y Fireworks<br>Start Menu \u2022 RS Camera'
@@ -1873,22 +1873,25 @@ function updateCamera(dt) {
     return
   }
 
-  // ── Planet surface camera ──
+  // ── Planet surface camera — close chase for curved racetrack feel ──
   if (onPlanet >= 0) {
     const pd = planetData[onPlanet]
     const surfUp = new THREE.Vector3().subVectors(p, pd.pos).normalize()
     // Get car forward from quaternion
     const carFwd = new THREE.Vector3(0, 0, 1).applyQuaternion(carGroup.quaternion)
     const behind = carFwd.clone().negate()
-    const planDist = 14 + Math.abs(carSpeed) * 0.1
+    // Tight camera — close and low for racetrack illusion
+    const planDist = 10 + Math.abs(carSpeed) * 0.08
+    const planHeight = 4 + Math.abs(carSpeed) * 0.04
     const ideal = new THREE.Vector3().copy(p)
       .add(behind.multiplyScalar(planDist))
-      .add(surfUp.clone().multiplyScalar(6))
-    camPos.lerp(ideal, 1 - Math.pow(0.01, dt))
+      .add(surfUp.clone().multiplyScalar(planHeight))
+    camPos.lerp(ideal, 1 - Math.pow(0.005, dt))
     camera.position.copy(camPos)
-    camTarget.lerp(new THREE.Vector3(p.x, p.y, p.z), 1 - Math.pow(0.01, dt))
+    // Look slightly ahead of the car for forward visibility
+    const lookAhead = new THREE.Vector3().copy(p).add(carFwd.clone().multiplyScalar(5))
+    camTarget.lerp(lookAhead, 1 - Math.pow(0.01, dt))
     camera.lookAt(camTarget)
-    // Align camera up with surface normal for correct orientation
     camera.up.copy(surfUp)
     return
   }
@@ -2398,13 +2401,11 @@ function updateSpaceFlight(dt) {
   const pitchUp = keys['Space'] || gp?.buttons[0]?.pressed ? 1 : 0
   const pitchDn = keys['ShiftLeft'] || gp?.buttons[1]?.pressed ? 1 : 0
 
-  // ── Planet on-surface driving ──
+  // ── Planet surface driving (curved racetrack illusion) ──
   if (onPlanet >= 0) {
     const pd = planetData[onPlanet]
-    const surfaceNormal = new THREE.Vector3().subVectors(carBody.position, pd.pos).normalize()
-    const surfaceDist = new THREE.Vector3().subVectors(carBody.position, pd.pos).length()
 
-    // Thrust
+    // Standard ground-style driving (same as home map)
     const thrust = (kbFwd || gpRT > 0.15) ? 1 : ((kbRev || gpLT > 0.15) ? -1 : 0)
     const steer = (kbLeft - kbRight) || -gpStickX
     boosting = keys['Space'] || gp?.buttons[0]?.pressed || false
@@ -2417,52 +2418,80 @@ function updateSpaceFlight(dt) {
       if (Math.abs(carSpeed) < 0.1) carSpeed = 0
     }
 
-    // Steering on sphere — rotate carAngle, but "forward" is tangent to sphere
     if (Math.abs(carSpeed) > 0.5 && Math.abs(steer) > 0) {
       carAngle += steer * turnSpeed * dt * Math.sign(carSpeed)
     }
 
-    // Compute forward direction on sphere surface
-    // Start with a reference forward, project onto tangent plane
-    let fwd = new THREE.Vector3(-Math.sin(carAngle), 0, -Math.cos(carAngle))
-    // Project onto tangent plane (remove component along normal)
-    fwd.sub(surfaceNormal.clone().multiplyScalar(fwd.dot(surfaceNormal))).normalize()
-    if (fwd.lengthSq() < 0.01) fwd.set(1, 0, 0) // fallback
+    // Move car on the planet's local "ground plane" (car drives flat relative to planet center)
+    // Car position is offset from planet center — we store a local 2D offset
+    if (!pd._localX) { pd._localX = 0; pd._localZ = 0 }
+    pd._localX += -Math.sin(carAngle) * carSpeed * dt
+    pd._localZ += -Math.cos(carAngle) * carSpeed * dt
 
-    // Move along sphere surface
-    const vel = fwd.clone().multiplyScalar(carSpeed)
-    const newPos = new THREE.Vector3().copy(carBody.position).add(vel.clone().multiplyScalar(dt))
-    // Project back onto sphere surface
-    const toCenter = new THREE.Vector3().subVectors(newPos, pd.pos).normalize()
-    const targetDist = pd.radius + carH * 0.5
+    // Wrap around — when car goes far, wrap position so it loops around the planet
+    const wrapDist = pd.radius * 1.5
+    if (pd._localX > wrapDist) pd._localX -= wrapDist * 2
+    if (pd._localX < -wrapDist) pd._localX += wrapDist * 2
+    if (pd._localZ > wrapDist) pd._localZ -= wrapDist * 2
+    if (pd._localZ < -wrapDist) pd._localZ += wrapDist * 2
 
-    // Check if trying to escape (boost while going fast upward concept)
-    if (boosting && Math.abs(carSpeed) > maxSpeed * 1.5) {
-      // Escape velocity! Launch off planet
-      onPlanet = -1
-      enterSpaceMode()
-      carBody.position.copy(newPos.add(toCenter.clone().multiplyScalar(10)))
-      _spaceDir.copy(toCenter)
-      return
-    }
-
-    newPos.copy(pd.pos).add(toCenter.multiplyScalar(targetDist))
-    carBody.position.copy(newPos)
+    // Map local 2D position onto sphere surface for 3D placement
+    // Use angular offset from "north pole" landing point
+    const angX = pd._localX / pd.radius
+    const angZ = pd._localZ / pd.radius
+    const surfUp = new THREE.Vector3(
+      Math.sin(angX) * Math.cos(angZ),
+      Math.cos(angX) * Math.cos(angZ),
+      Math.sin(angZ)
+    ).normalize()
+    const worldPos = pd.pos.clone().add(surfUp.clone().multiplyScalar(pd.radius + carH * 0.5))
+    carBody.position.copy(worldPos)
     carBody.velocity.setZero()
     carBody.angularVelocity.setZero()
 
-    // Orient car: up = surface normal, forward = fwd direction
-    const right = new THREE.Vector3().crossVectors(surfaceNormal, fwd).normalize()
-    fwd.crossVectors(right, surfaceNormal).normalize()
-    const m = new THREE.Matrix4().makeBasis(right, surfaceNormal, fwd.negate())
-    carBody.quaternion.copy(new CANNON.Quaternion().copy(new THREE.Quaternion().setFromRotationMatrix(m)))
+    // Orient car: up = surface normal
+    const carFwd = new THREE.Vector3(-Math.sin(carAngle), 0, -Math.cos(carAngle))
+    // Project forward onto tangent plane
+    carFwd.sub(surfUp.clone().multiplyScalar(carFwd.dot(surfUp))).normalize()
+    if (carFwd.lengthSq() < 0.01) carFwd.set(1, 0, 0)
+    const carRight = new THREE.Vector3().crossVectors(surfUp, carFwd).normalize()
+    carFwd.crossVectors(carRight, surfUp).normalize()
+    const orientMat = new THREE.Matrix4().makeBasis(carRight, surfUp, carFwd.negate())
+    carBody.quaternion.copy(new CANNON.Quaternion().copy(new THREE.Quaternion().setFromRotationMatrix(orientMat)))
 
-    // Check return portal
-    const portalDist = new THREE.Vector3().subVectors(carBody.position, pd.portal.position).length()
-    if (portalDist < 5) {
-      // Teleport home
+    // Jump to escape — B button or jump powerup
+    const jumpBtn = gp?.buttons[1]?.pressed || false
+    if (jumpBtn && !keys._gpPlanetJump) {
+      keys._gpPlanetJump = true
+      // Launch off planet into space
+      onPlanet = -1
+      pd._localX = 0; pd._localZ = 0
+      enterSpaceMode()
+      carBody.position.copy(worldPos.add(surfUp.clone().multiplyScalar(15)))
+      _spaceDir.copy(surfUp)
+      spaceYaw = carAngle
+      spacePitch = 0.3
+      setTimeout(() => keys._gpPlanetJump = false, 400)
+      return
+    }
+    // Keyboard jump to escape
+    if (keys['KeyR']) {
+      onPlanet = -1
+      pd._localX = 0; pd._localZ = 0
+      enterSpaceMode()
+      carBody.position.copy(worldPos.add(surfUp.clone().multiplyScalar(15)))
+      _spaceDir.copy(surfUp)
+      spaceYaw = carAngle
+      spacePitch = 0.3
+      return
+    }
+
+    // Check return portal — portal is at north pole (localX=0, localZ=0)
+    const localDist = Math.sqrt(pd._localX * pd._localX + pd._localZ * pd._localZ)
+    if (localDist < 8) {
       onPlanet = -1
       spaceMode = false
+      pd._localX = 0; pd._localZ = 0
       carBody.type = CANNON.Body.DYNAMIC
       carBody.position.set(0, 5, 0)
       carBody.velocity.setZero()
@@ -2478,9 +2507,9 @@ function updateSpaceFlight(dt) {
     // Pulse return portal
     pd.portal.material.emissiveIntensity = 2 + Math.sin(performance.now() * 0.005) * 1.5
 
-    // HUD info
+    // HUD
     spaceHudEl.style.display = 'block'
-    spaceHudEl.innerHTML = '<div style="color:#ffd700;font-size:1.1rem;margin-bottom:4px">' + pd.name.toUpperCase() + '</div><div style="font-size:0.75rem;color:#88ff88">Portal: ' + Math.floor(portalDist) + 'm</div>'
+    spaceHudEl.innerHTML = '<div style="color:#ffd700;font-size:1.1rem;margin-bottom:4px">' + pd.name.toUpperCase() + '</div><div style="font-size:0.75rem;color:#88ff88">Portal: ' + Math.floor(localDist) + 'm</div><div style="font-size:0.65rem;color:#aaa">B/R to launch off</div>'
     compassEl.style.display = 'none'
     gameModeEl.textContent = pd.name.toUpperCase()
     return
@@ -2492,8 +2521,8 @@ function updateSpaceFlight(dt) {
 
   // Yaw (left/right)
   const yawInput = (kbLeft - kbRight) || -gpStickX
-  // Pitch (up/down)
-  const pitchInput = (pitchUp - pitchDn) || -gpStickY
+  // Pitch (inverted — press up/Space to pitch DOWN toward planets, press down/Shift to pitch UP)
+  const pitchInput = (pitchDn - pitchUp) || gpStickY
   // Thrust
   const thrustInput = (kbFwd || gpRT > 0.15) ? 1 : ((kbRev || gpLT > 0.15) ? -0.3 : 0)
 
@@ -2508,10 +2537,23 @@ function updateSpaceFlight(dt) {
     -Math.cos(spaceYaw) * Math.cos(spacePitch)
   ).normalize()
 
+  // Y button (keyboard Y or gamepad Y/buttons[3]) = auto-fly home
+  const autoHome = keys['KeyY'] || gp?.buttons[3]?.pressed || false
+
   // Speed
   boosting = keys['Space'] || gp?.buttons[0]?.pressed || false
-  const spaceMaxSpeed = boosting ? 120 : 50
-  if (thrustInput > 0) {
+  const spaceMaxSpeed = boosting || autoHome ? 120 : 50
+  if (autoHome) {
+    // Auto-pilot toward home — override direction to point at origin
+    const homeTarget = new THREE.Vector3(-carBody.position.x, -carBody.position.y, -carBody.position.z).normalize()
+    // Smoothly rotate toward home
+    _spaceDir.lerp(homeTarget, dt * 3).normalize()
+    // Recompute yaw/pitch from direction so releasing Y continues smoothly
+    spaceYaw = Math.atan2(-_spaceDir.x, -_spaceDir.z)
+    spacePitch = Math.asin(Math.max(-1, Math.min(1, _spaceDir.y)))
+    // Full speed toward home
+    carSpeed = Math.min(carSpeed + 60 * dt, spaceMaxSpeed)
+  } else if (thrustInput > 0) {
     carSpeed = Math.min(carSpeed + 30 * dt * (boosting ? 3 : 1), spaceMaxSpeed)
   } else if (thrustInput < 0) {
     carSpeed = Math.max(carSpeed - 20 * dt, 0)
@@ -2602,7 +2644,8 @@ function updateSpaceFlight(dt) {
   const angle = Math.atan2(screenHome.y, screenHome.x)
   const arrows = ['\u2192','\u2197','\u2191','\u2196','\u2190','\u2199','\u2193','\u2198']
   const arrowIdx = Math.round(((angle + Math.PI) / (Math.PI * 2)) * 8) % 8
-  compassEl.innerHTML = '<span style="font-size:1.2rem">' + arrows[arrowIdx] + '</span> HOME ' + homeDist + 'm'
+  const autoLabel = autoHome ? ' <span style="color:#ffd700">RETURNING...</span>' : ''
+  compassEl.innerHTML = '<span style="font-size:1.2rem">' + arrows[arrowIdx] + '</span> HOME ' + homeDist + 'm' + autoLabel
   compassEl.style.display = 'block'
 
   gameModeEl.textContent = 'SPACE FLIGHT'
