@@ -569,14 +569,75 @@ for (const def of creatureDefs) {
   }
 }
 
+let creatureScore = 0
+const creatureScoreHud = document.createElement('div')
+creatureScoreHud.style.cssText = 'position:fixed;top:20px;right:20px;color:#ff4444;font:bold 1.3rem monospace;pointer-events:none;z-index:10;display:none'
+document.body.appendChild(creatureScoreHud)
+
 function updateCreatures(dt) {
   const px = carBody.position.x, pz = carBody.position.z
+  const isGiant = activePU === 'giant'
+
+  // Show score HUD only when giant mode has been used at least once
+  if (creatureScore > 0) {
+    creatureScoreHud.style.display = 'block'
+    creatureScoreHud.textContent = 'Creatures: ' + creatureScore
+  }
+
   for (const c of creatureList) {
-    c.anim += dt * (c.state === 'chase' ? 8 : 4)
+    // Handle respawn timer for eaten creatures
+    if (c.eaten) {
+      c.respawnTimer -= dt
+      if (c.respawnTimer <= 0) {
+        c.eaten = false
+        c.mesh.visible = true
+        // Respawn far from player
+        c.x = c.homeX; c.z = c.homeZ
+        c.state = 'wander'
+      }
+      continue
+    }
+
+    c.anim += dt * (c.state === 'chase' || c.state === 'flee' ? 8 : 4)
     const dx = px - c.x, dz = pz - c.z
     const dist = Math.sqrt(dx*dx + dz*dz)
 
-    if (c.state === 'wander' && dist < c.chaseRange) c.state = 'chase'
+    // GIANT MODE — Pac-Man style: creatures flee, can be eaten
+    if (isGiant) {
+      c.state = 'flee'
+      // Run AWAY from the car
+      const fleeAngle = Math.atan2(-dx, -dz)
+      let ad = fleeAngle - c.angle; while(ad>Math.PI)ad-=Math.PI*2; while(ad<-Math.PI)ad+=Math.PI*2
+      c.angle += ad * dt * 6
+      const fleeSpeed = c.chaseSpeed * 1.3
+      c.x += Math.sin(c.angle) * fleeSpeed * dt
+      c.z += Math.cos(c.angle) * fleeSpeed * dt
+
+      // Car runs over creature — earn a point!
+      if (dist < 6) {
+        c.eaten = true
+        c.respawnTimer = 5 // respawn after 5 seconds
+        c.mesh.visible = false
+        creatureScore++
+        // Flash feedback
+        puToast.textContent = '+1 CREATURE!'
+        puToast.style.color = '#ff4444'
+        puToast.style.opacity = '1'
+        setTimeout(() => puToast.style.opacity = '0', 1200)
+        // Fireworks burst on eat
+        spawnFireworks()
+      }
+    }
+    // Normal behavior
+    else if (c.state === 'flee') {
+      // Giant mode just ended — go back to wandering
+      c.state = 'wander'
+      c.wanderTarget = { x: c.x + (Math.random()-0.5)*40, z: c.z + (Math.random()-0.5)*40 }
+      c.wanderTimer = 200
+    }
+    else if (c.state === 'wander' && dist < c.chaseRange) {
+      c.state = 'chase'
+    }
     else if (c.state === 'chase' && dist > c.giveUp) {
       c.state = 'wander'
       c.wanderTarget = { x: c.x + (Math.random()-0.5)*40, z: c.z + (Math.random()-0.5)*40 }
@@ -589,7 +650,7 @@ function updateCreatures(dt) {
       c.angle += ad * dt * 5
       c.x += Math.sin(c.angle) * c.chaseSpeed * dt
       c.z += Math.cos(c.angle) * c.chaseSpeed * dt
-    } else {
+    } else if (c.state === 'wander') {
       c.wanderTimer -= dt * 60
       if (c.wanderTimer <= 0) {
         c.wanderTarget = { x: c.homeX + (Math.random()-0.5)*40, z: c.homeZ + (Math.random()-0.5)*40 }
@@ -602,6 +663,7 @@ function updateCreatures(dt) {
       c.x += Math.sin(c.angle) * c.speed * dt
       c.z += Math.cos(c.angle) * c.speed * dt
     }
+
     c.x = Math.max(-90, Math.min(90, c.x))
     c.z = Math.max(-90, Math.min(90, c.z))
 
@@ -610,10 +672,29 @@ function updateCreatures(dt) {
     c.mesh.position.set(c.x, stompY, c.z)
     c.mesh.rotation.y = c.angle
 
+    // Creatures flash blue when fleeing (Pac-Man scared ghost style)
+    if (c.state === 'flee') {
+      c.mesh.traverse(child => {
+        if (child.isMesh && child.material && !child.userData.fire) {
+          if (!child.userData._origColor) child.userData._origColor = child.material.color.getHex()
+          child.material.color.setHex(Math.sin(c.anim * 8) > 0 ? 0x4444ff : 0x2222aa)
+        }
+      })
+    } else {
+      // Restore original colors
+      c.mesh.traverse(child => {
+        if (child.userData._origColor) {
+          child.material.color.setHex(child.userData._origColor)
+          delete child.userData._origColor
+        }
+      })
+    }
+
     // Animate legs/tail/wings
     const legAnim = Math.sin(c.anim) * 0.3
+    const legSpeed = c.state === 'flee' ? 1.5 : (c.state === 'chase' ? 1 : 0.5)
     c.mesh.traverse(child => {
-      if (child.userData.leg) child.rotation.x = legAnim * (c.state === 'chase' ? 1 : 0.5)
+      if (child.userData.leg) child.rotation.x = legAnim * legSpeed
       if (child.userData.tail) child.rotation.y = Math.sin(c.anim * 0.7) * 0.4
       if (child.userData.wing) child.rotation.z = Math.sin(c.anim * 2) * 0.3 * child.userData.side
       if (child.userData.fire) child.material.opacity = c.state === 'chase' ? 0.6 + Math.sin(c.anim*4)*0.3 : 0
