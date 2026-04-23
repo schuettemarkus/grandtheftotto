@@ -430,55 +430,7 @@ for (const side of [-1, 1]) {
 }
 
 
-// ── Strategic jump ramps ──
-function addJump(x, z, ry, w, slope, color) {
-  const len = 6, h = 0.3
-  const geo = new THREE.BoxGeometry(w || 5, h, len)
-  const mat = new THREE.MeshStandardMaterial({ color: color || 0xdaa520, roughness: 0.5 })
-  const mesh = new THREE.Mesh(geo, mat)
-  mesh.castShadow = true
-  scene.add(mesh)
-  const body = new CANNON.Body({
-    type: CANNON.Body.STATIC,
-    shape: new CANNON.Box(new CANNON.Vec3((w||5)/2, h/2, len/2)),
-    material: groundMat,
-  })
-  body.position.set(x, 0.8, z)
-  body.quaternion.setFromEuler(-(slope || 0.18), ry || 0, 0)
-  mesh.position.copy(body.position)
-  mesh.quaternion.copy(body.quaternion)
-  world.addBody(body)
-  // Chevron stripes on top
-  const stripeMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, emissive: 0xffaa00, emissiveIntensity: 0.3 })
-  for (let i = 0; i < 3; i++) {
-    const s = new THREE.Mesh(new THREE.BoxGeometry((w||5) * 0.8, 0.02, 0.2), stripeMat)
-    s.position.copy(mesh.position)
-    s.rotation.copy(mesh.rotation)
-    const offset = new THREE.Vector3(0, 0.18, -1.5 + i * 1.5)
-    offset.applyEuler(mesh.rotation)
-    s.position.add(offset)
-    scene.add(s)
-  }
-}
-
-// Big center jump — aimed straight ahead from spawn
-addJump(0, -20, 0, 6, 0.22, 0xff6600)
-// Side jumps in an X pattern
-addJump(25, -25, Math.PI/4, 5, 0.2, 0xdaa520)
-addJump(-25, -25, -Math.PI/4, 5, 0.2, 0xdaa520)
-addJump(25, 25, -Math.PI/4, 5, 0.18, 0xdaa520)
-addJump(-25, 25, Math.PI/4, 5, 0.18, 0xdaa520)
-// Long distance jumps
-addJump(50, 0, Math.PI/2, 6, 0.25, 0xff4400)
-addJump(-50, 0, Math.PI/2, 6, 0.25, 0xff4400)
-addJump(0, 50, 0, 6, 0.25, 0xff4400)
-// Small kickers scattered around
-addJump(15, -40, 0.3, 3, 0.15, 0xcc8800)
-addJump(-35, 15, 1.0, 3, 0.15, 0xcc8800)
-addJump(40, -15, 2.0, 3, 0.15, 0xcc8800)
-addJump(-15, 40, -0.5, 3, 0.15, 0xcc8800)
-
-// (berms removed for performance)
+// (ramps removed)
 
 // ── Creatures — purely visual, no physics interaction ──
 const creatureList = []
@@ -672,22 +624,24 @@ function updateCreatures(dt) {
     c.mesh.position.set(c.x, stompY, c.z)
     c.mesh.rotation.y = c.angle
 
+    // Save original colors once (first time we see this creature)
+    if (!c._colorsSaved) {
+      c._colorsSaved = true; c._origColors = []
+      c.mesh.traverse(child => {
+        if (child.isMesh && child.material && child.material.color) {
+          c._origColors.push({ mesh: child, color: child.material.color.getHex() })
+        }
+      })
+    }
     // Creatures flash blue when fleeing (Pac-Man scared ghost style)
     if (c.state === 'flee') {
-      c.mesh.traverse(child => {
-        if (child.isMesh && child.material && !child.userData.fire) {
-          if (!child.userData._origColor) child.userData._origColor = child.material.color.getHex()
-          child.material.color.setHex(Math.sin(c.anim * 8) > 0 ? 0x4444ff : 0x2222aa)
-        }
-      })
+      const flashColor = Math.sin(c.anim * 8) > 0 ? 0x4444ff : 0x2222aa
+      for (const o of c._origColors) {
+        if (!o.mesh.userData.fire) o.mesh.material.color.setHex(flashColor)
+      }
     } else {
-      // Restore original colors
-      c.mesh.traverse(child => {
-        if (child.userData._origColor) {
-          child.material.color.setHex(child.userData._origColor)
-          delete child.userData._origColor
-        }
-      })
+      // Always restore original colors when not fleeing
+      for (const o of c._origColors) o.mesh.material.color.setHex(o.color)
     }
 
     // Animate legs/tail/wings
@@ -744,19 +698,19 @@ for (let i = 0; i < 40; i++) {
   const x = (Math.random() - 0.5) * 160
   const z = (Math.random() - 0.5) * 160
   if (Math.abs(x) < 8 && Math.abs(z) < 8) continue
-  const trunkH = 1.5 + Math.random()
+  const trunkH = 6 + Math.random() * 4
   const trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.12, 0.16, trunkH, 6),
+    new THREE.CylinderGeometry(0.5, 0.8, trunkH, 6),
     new THREE.MeshStandardMaterial({ color: 0x6b3a1a, roughness: 0.9 })
   )
   trunk.position.set(x, trunkH / 2, z)
   trunk.castShadow = true
   scene.add(trunk)
   const canopy = new THREE.Mesh(
-    new THREE.SphereGeometry(0.8 + Math.random() * 0.5, 6, 5),
+    new THREE.SphereGeometry(3 + Math.random() * 2, 8, 6),
     new THREE.MeshStandardMaterial({ color: 0x2d5a1e, roughness: 0.8, flatShading: true })
   )
-  canopy.position.set(x, trunkH + 0.3, z)
+  canopy.position.set(x, trunkH + 1.5, z)
   canopy.castShadow = true
   scene.add(canopy)
 }
@@ -824,19 +778,40 @@ const puTypes = [
   { name: 'COIN x10', color: 0xffd700, emissive: 0xffaa00, effect: 'coins', duration: 0 },
 ]
 let activePU = null, puTimer = 0, coinCount = 0
-let jumpFlipActive = false, jumpFlipTime = 0
+let isAirborne = false
 const puToast = document.createElement('div')
 puToast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);color:#fff;font:bold 1.2rem monospace;text-shadow:0 0 10px #000;pointer-events:none;z-index:10;opacity:0;transition:opacity 0.3s'
 document.body.appendChild(puToast)
+
+// Build unique icon textures for each powerup type
+function makePUIcon(icon, bgColor) {
+  const c = document.createElement('canvas'); c.width = 128; c.height = 128
+  const x = c.getContext('2d')
+  // Glowing circle bg
+  const grd = x.createRadialGradient(64,64,10,64,64,60)
+  grd.addColorStop(0, bgColor); grd.addColorStop(1, 'rgba(0,0,0,0)')
+  x.fillStyle = grd; x.fillRect(0,0,128,128)
+  // Icon
+  x.font = '64px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'
+  x.fillStyle = '#fff'; x.fillText(icon, 64, 64)
+  return new THREE.CanvasTexture(c)
+}
+const puIcons = {
+  speed: makePUIcon('\u26A1', 'rgba(0,200,255,0.8)'),    // lightning bolt
+  jump:  makePUIcon('\u{1F680}', 'rgba(255,68,255,0.8)'), // rocket
+  giant: makePUIcon('\u{1F4AA}', 'rgba(68,255,68,0.8)'),  // flexed bicep
+  coins: makePUIcon('\u{1FA99}', 'rgba(255,215,0,0.8)'),  // coin
+}
 
 for (let i = 0; i < 25; i++) {
   const t = puTypes[i % puTypes.length]
   const x = (Math.random()-0.5) * 160, z = (Math.random()-0.5) * 160
   if (Math.abs(x)<8 && Math.abs(z)<8) continue
-  const geo = new THREE.SphereGeometry(0.8, 12, 12)
-  const mat = new THREE.MeshStandardMaterial({ color: t.color, emissive: t.emissive, emissiveIntensity: 1, transparent: true, opacity: 0.85 })
-  const mesh = new THREE.Mesh(geo, mat)
-  mesh.position.set(x, 1.5, z)
+  // Billboard sprite with icon texture
+  const mat = new THREE.SpriteMaterial({ map: puIcons[t.effect], transparent: true, depthTest: false })
+  const mesh = new THREE.Sprite(mat)
+  mesh.scale.set(4, 4, 1)
+  mesh.position.set(x, 3, z)
   scene.add(mesh)
   powerupMeshes.push({ mesh, type: t, x, z, collected: false, bob: Math.random()*Math.PI*2 })
 }
@@ -847,8 +822,10 @@ function updatePowerups(dt) {
   for (const p of powerupMeshes) {
     if (p.collected) continue
     p.bob += dt * 3
-    p.mesh.position.y = 1.5 + Math.sin(p.bob) * 0.4
-    p.mesh.rotation.y += dt * 2
+    p.mesh.position.y = 3 + Math.sin(p.bob) * 0.6
+    // Pulse scale for visibility
+    const pulse = 1 + Math.sin(p.bob * 2) * 0.15
+    p.mesh.scale.set(4 * pulse, 4 * pulse, 1)
     const dx = px - p.x, dz = pz - p.z
     if (dx*dx+dz*dz < 9) {
       p.collected = true; p.mesh.visible = false
@@ -857,7 +834,7 @@ function updatePowerups(dt) {
       puToast.style.opacity = '1'
       setTimeout(() => puToast.style.opacity = '0', 2000)
       if (p.type.effect === 'speed') { activePU = 'speed'; puTimer = 5 }
-      else if (p.type.effect === 'jump') { carBody.velocity.y = 30; jumpFlipActive = true; jumpFlipTime = 0 }
+      else if (p.type.effect === 'jump') { carBody.velocity.y = 28; isAirborne = true }
       else if (p.type.effect === 'giant') { activePU = 'giant'; puTimer = 6; carGroup.scale.setScalar(3) }
       else if (p.type.effect === 'coins') coinCount += 10
     }
@@ -898,26 +875,40 @@ function updateFireworks(dt) {
   }
 }
 
-// Feature 2: TURBO TRAIL — colorful ribbon behind car at high speed
+// Feature 2: SMOKE & FIRE TRAIL behind car at speed
 const trailParts = []
 let _trailFrame = 0
 function updateTrail(dt) {
   _trailFrame++
-  if (Math.abs(carSpeed) > 10 && _trailFrame % 3 === 0 && trailParts.length < 30) {
-    const geo = new THREE.SphereGeometry(0.3, 3, 3)
-    const hue = (performance.now() * 0.001) % 1
-    const color = new THREE.Color().setHSL(hue, 1, 0.5)
-    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8 })
+  const spd = Math.abs(carSpeed)
+  if (spd > 5 && _trailFrame % 3 === 0 && trailParts.length < 25) {
+    const isFast = spd > 20
+    const geo = new THREE.SphereGeometry(isFast ? 0.6 : 0.35, 3, 3)
+    // Fire when fast, grey smoke when slow
+    const color = isFast
+      ? new THREE.Color().setHSL(0.05 + Math.random() * 0.05, 1, 0.5) // orange-red fire
+      : new THREE.Color(0.4, 0.4, 0.4) // grey smoke
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: isFast ? 0.9 : 0.5 })
     const m = new THREE.Mesh(geo, mat)
-    m.position.copy(carBody.position); m.position.y += 0.3
+    // Spawn behind the car
+    const backX = Math.sin(carAngle) * (carL * 0.5 + 0.5)
+    const backZ = Math.cos(carAngle) * (carL * 0.5 + 0.5)
+    m.position.set(
+      carBody.position.x + backX + (Math.random()-0.5)*0.5,
+      carBody.position.y + 0.3,
+      carBody.position.z + backZ + (Math.random()-0.5)*0.5
+    )
     scene.add(m)
-    trailParts.push({ mesh: m, life: 1.5 })
+    trailParts.push({ mesh: m, life: isFast ? 0.8 : 1.2, maxLife: isFast ? 0.8 : 1.2 })
   }
   for (let i = trailParts.length-1; i >= 0; i--) {
-    trailParts[i].life -= dt
-    trailParts[i].mesh.material.opacity = trailParts[i].life / 1.5
-    trailParts[i].mesh.scale.setScalar(trailParts[i].life)
-    if (trailParts[i].life <= 0) { scene.remove(trailParts[i].mesh); trailParts.splice(i, 1) }
+    const t = trailParts[i]
+    t.life -= dt
+    t.mesh.position.y += dt * 2 // smoke rises
+    const frac = t.life / t.maxLife
+    t.mesh.material.opacity = frac * 0.7
+    t.mesh.scale.setScalar(0.5 + (1 - frac) * 1.5) // expands as it fades
+    if (t.life <= 0) { scene.remove(t.mesh); trailParts.splice(i, 1) }
   }
 }
 
@@ -1038,29 +1029,82 @@ function updateCar(dt) {
     -Math.cos(carAngle) * carSpeed
   )
 
-  // Jump flip/twist animation
-  if (jumpFlipActive) {
-    jumpFlipTime += dt
-    // Do a full front flip + 360 twist over ~1.5 seconds
-    const flipProgress = Math.min(jumpFlipTime / 1.5, 1)
-    const flipAngle = flipProgress * Math.PI * 2  // full front flip
-    const twistAngle = flipProgress * Math.PI * 2  // full 360 twist
-    carBody.quaternion.setFromEuler(flipAngle, carAngle + twistAngle, 0)
-    // When close to landing (falling down and near ground), snap upright
-    if (carBody.position.y < 4 && carBody.velocity.y < 0 && flipProgress > 0.7) {
-      jumpFlipActive = false
-      carBody.quaternion.setFromEuler(0, carAngle, 0)
-      carBody.angularVelocity.setZero()
+  // Airborne detection + glider
+  if (carBody.position.y > 3) isAirborne = true
+  if (carBody.position.y < 2 && carBody.velocity.y <= 0) isAirborne = false
+
+  if (isAirborne && boosting) {
+    // GLIDER — hold boost in the air to glide! Slow descent, keep speed
+    carBody.velocity.y = Math.max(carBody.velocity.y, -3) // almost float
+    // Show glider wings
+    if (!carGroup.userData.gliderL) {
+      const gMat = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, side: THREE.DoubleSide })
+      const gL = new THREE.Mesh(new THREE.BoxGeometry(carW * 2, 0.05, carL * 0.8), gMat)
+      gL.position.set(-carW * 1.2, carH * 0.3, 0)
+      gL.rotation.z = 0.15
+      carGroup.add(gL)
+      carGroup.userData.gliderL = gL
+      const gR = new THREE.Mesh(new THREE.BoxGeometry(carW * 2, 0.05, carL * 0.8), gMat)
+      gR.position.set(carW * 1.2, carH * 0.3, 0)
+      gR.rotation.z = -0.15
+      carGroup.add(gR)
+      carGroup.userData.gliderR = gR
     }
   } else {
-    carBody.quaternion.setFromEuler(0, carAngle, 0)
-    // Keep car from tipping
-    carBody.angularVelocity.x *= 0.5
-    carBody.angularVelocity.z *= 0.5
+    // Remove glider wings when not gliding
+    if (carGroup.userData.gliderL) {
+      carGroup.remove(carGroup.userData.gliderL)
+      carGroup.remove(carGroup.userData.gliderR)
+      delete carGroup.userData.gliderL
+      delete carGroup.userData.gliderR
+    }
+  }
+
+  // Drift — visual tilt + dirt spray when turning at speed
+  const drifting = Math.abs(steerInput) > 0.3 && Math.abs(carSpeed) > 8
+  const driftTilt = drifting ? steerInput * 0.12 : 0
+  carBody.quaternion.setFromEuler(0, carAngle, driftTilt)
+  carBody.angularVelocity.x *= 0.5
+  carBody.angularVelocity.z *= 0.5
+
+  // Dirt spray particles when drifting
+  if (drifting && !isAirborne && _trailFrame % 2 === 0) {
+    for (const side of [-1, 1]) {
+      const dirtGeo = new THREE.SphereGeometry(0.2 + Math.random() * 0.3, 3, 3)
+      const dirtMat = new THREE.MeshBasicMaterial({ color: 0x8b7355, transparent: true, opacity: 0.7 })
+      const dirt = new THREE.Mesh(dirtGeo, dirtMat)
+      // Spray from the side of the car opposite to turn direction
+      const sideX = Math.cos(carAngle) * side * carW * 0.6
+      const sideZ = -Math.sin(carAngle) * side * carW * 0.6
+      dirt.position.set(
+        carBody.position.x + sideX + (Math.random()-0.5),
+        0.3 + Math.random() * 0.5,
+        carBody.position.z + sideZ + (Math.random()-0.5)
+      )
+      scene.add(dirt)
+      trailParts.push({
+        mesh: dirt, life: 0.6, maxLife: 0.6,
+        vx: sideX * 3 + (Math.random()-0.5)*2,
+        vy: 2 + Math.random() * 3,
+        vz: sideZ * 3 + (Math.random()-0.5)*2,
+      })
+    }
+  }
+  // Animate dirt with velocity
+  for (const t of trailParts) {
+    if (t.vx !== undefined) {
+      t.mesh.position.x += t.vx * dt
+      t.mesh.position.y += t.vy * dt
+      t.mesh.position.z += t.vz * dt
+      t.vy -= 10 * dt // gravity on dirt
+    }
   }
 
   // HUD
-  document.getElementById('spd').textContent = Math.floor(Math.abs(carSpeed) * 3.6) + ' km/h'
+  const hudText = Math.floor(Math.abs(carSpeed) * 3.6) + ' km/h'
+  if (isAirborne && boosting) document.getElementById('spd').textContent = hudText + ' GLIDING'
+  else if (drifting) document.getElementById('spd').textContent = hudText + ' DRIFT!'
+  else document.getElementById('spd').textContent = hudText
 }
 
 // ════════════════════════════════════════════════════════════
