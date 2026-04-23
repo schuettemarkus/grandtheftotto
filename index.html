@@ -743,6 +743,7 @@ const puTypes = [
   { name: 'COIN x10', color: 0xffd700, emissive: 0xffaa00, effect: 'coins', duration: 0 },
 ]
 let activePU = null, puTimer = 0, coinCount = 0
+let jumpFlipActive = false, jumpFlipTime = 0
 const puToast = document.createElement('div')
 puToast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);color:#fff;font:bold 1.2rem monospace;text-shadow:0 0 10px #000;pointer-events:none;z-index:10;opacity:0;transition:opacity 0.3s'
 document.body.appendChild(puToast)
@@ -775,7 +776,7 @@ function updatePowerups(dt) {
       puToast.style.opacity = '1'
       setTimeout(() => puToast.style.opacity = '0', 2000)
       if (p.type.effect === 'speed') { activePU = 'speed'; puTimer = 5 }
-      else if (p.type.effect === 'jump') carBody.velocity.y = 25 // instant mega jump
+      else if (p.type.effect === 'jump') { carBody.velocity.y = 30; jumpFlipActive = true; jumpFlipTime = 0 }
       else if (p.type.effect === 'giant') { activePU = 'giant'; puTimer = 6; carGroup.scale.setScalar(3) }
       else if (p.type.effect === 'coins') coinCount += 10
     }
@@ -878,54 +879,52 @@ function updateCar(dt) {
   // Only drive if car is roughly upright
   if (up.y < 0.5) return
 
-  // Throttle
-  const fwd = (keys['ArrowUp'] || keys['KeyW']) ? 1 : 0
-  const rev = (keys['ArrowDown'] || keys['KeyS']) ? 1 : 0
-  const throttle = fwd - rev
-  const boosting = keys['Space']
+  // Read ALL inputs first — keyboard + gamepad
+  const gp = navigator.getGamepads?.()[0]
+  const gpRT = gp?.buttons[7]?.value || 0
+  const gpLT = gp?.buttons[6]?.value || 0
+  const gpStickX = gp ? (Math.abs(gp.axes[0]) > 0.15 ? gp.axes[0] : 0) : 0
+  const gpBoosting = gp?.buttons[0]?.pressed || false
+  const gpHasThrottle = gpRT > 0.15 || gpLT > 0.15
 
+  const kbFwd = (keys['ArrowUp'] || keys['KeyW']) ? 1 : 0
+  const kbRev = (keys['ArrowDown'] || keys['KeyS']) ? 1 : 0
+  const kbThrottle = kbFwd - kbRev
+  const kbBoosting = keys['Space']
+
+  // Combine boost from either source
+  const boosting = kbBoosting || gpBoosting
   const speedMul = activePU === 'speed' ? 2 : 1
-  const effectiveAccel = (boosting ? accel * boostMult : accel) * speedMul
-  const effectiveMax = (boosting ? maxSpeed * 1.8 : maxSpeed) * speedMul
+  const effAccel = (boosting ? accel * boostMult : accel) * speedMul
+  const effMax = (boosting ? maxSpeed * 1.8 : maxSpeed) * speedMul
 
-  if (throttle > 0) {
-    carSpeed = Math.min(carSpeed + effectiveAccel * dt, effectiveMax)
-  } else if (throttle < 0) {
-    carSpeed = Math.max(carSpeed - brakeForce * dt, -effectiveMax * 0.4)
+  // Throttle — gamepad overrides keyboard entirely if triggers are active
+  if (gpHasThrottle) {
+    // Gamepad triggers: full acceleration regardless of trigger depth
+    if (gpRT > gpLT) carSpeed = Math.min(carSpeed + effAccel * dt, effMax)
+    else carSpeed = Math.max(carSpeed - brakeForce * dt, -effMax * 0.4)
+  } else if (kbThrottle > 0) {
+    carSpeed = Math.min(carSpeed + effAccel * dt, effMax)
+  } else if (kbThrottle < 0) {
+    carSpeed = Math.max(carSpeed - brakeForce * dt, -effMax * 0.4)
   } else {
-    // Coast to stop
+    // Coast to stop — only when NOTHING is pressed
     carSpeed *= (1 - 2 * dt)
     if (Math.abs(carSpeed) < 0.1) carSpeed = 0
   }
 
-  // Steering
-  const left = (keys['ArrowLeft'] || keys['KeyA']) ? 1 : 0
-  const right = (keys['ArrowRight'] || keys['KeyD']) ? 1 : 0
-  const steer = left - right
+  // Steering — combine keyboard + gamepad
+  const kbLeft = (keys['ArrowLeft'] || keys['KeyA']) ? 1 : 0
+  const kbRight = (keys['ArrowRight'] || keys['KeyD']) ? 1 : 0
+  const steerInput = (kbRight - kbLeft) || -gpStickX
 
-  if (Math.abs(carSpeed) > 0.5) {
-    const turnFactor = Math.min(1, Math.abs(carSpeed) / 8) // less turn at low speed
-    carAngle += steer * turnSpeed * turnFactor * dt * Math.sign(carSpeed)
+  if (Math.abs(carSpeed) > 0.5 && Math.abs(steerInput) > 0) {
+    const turnFactor = Math.min(1, Math.abs(carSpeed) / 8)
+    carAngle += steerInput * turnSpeed * turnFactor * dt * Math.sign(carSpeed)
   }
 
-  // Gamepad — merge into throttle/steer BEFORE applying velocity
-  const gp = navigator.getGamepads?.()[0]
+  // Gamepad buttons
   if (gp) {
-    const stickX = Math.abs(gp.axes[0]) > 0.15 ? gp.axes[0] : 0
-    const rt = gp.buttons[7]?.value || 0
-    const lt = gp.buttons[6]?.value || 0
-    const gpBoosting = gp.buttons[0]?.pressed
-    // Triggers: any pull > 0.15 = full throttle (matches keyboard speed exactly)
-    if (rt > 0.15 || lt > 0.15) {
-      const gpSpeedMul = activePU === 'speed' ? 2 : 1
-      const gpEffAccel = (gpBoosting ? accel * boostMult : accel) * gpSpeedMul
-      const gpEffMax = (gpBoosting ? maxSpeed * 1.8 : maxSpeed) * gpSpeedMul
-      if (rt > lt) carSpeed = Math.min(carSpeed + gpEffAccel * dt, gpEffMax)
-      else carSpeed = Math.max(carSpeed - brakeForce * dt, -gpEffMax * 0.4)
-    }
-    if (Math.abs(stickX) > 0 && Math.abs(carSpeed) > 0.5) {
-      carAngle -= stickX * turnSpeed * Math.min(1, Math.abs(carSpeed)/8) * dt * Math.sign(carSpeed)
-    }
     if (gp.buttons[1]?.pressed) { // B = reset
       carBody.position.set(carBody.position.x, 3, carBody.position.z)
       carBody.quaternion.setFromEuler(0, carAngle, 0)
@@ -952,16 +951,32 @@ function updateCar(dt) {
   }
 
   // Apply to physics body
-  carBody.quaternion.setFromEuler(0, carAngle, 0)
   carBody.velocity.set(
     -Math.sin(carAngle) * carSpeed,
-    carBody.velocity.y, // preserve gravity and jump velocity
+    carBody.velocity.y,
     -Math.cos(carAngle) * carSpeed
   )
 
-  // Keep car from tipping — force upright orientation
-  carBody.angularVelocity.x *= 0.5
-  carBody.angularVelocity.z *= 0.5
+  // Jump flip/twist animation
+  if (jumpFlipActive) {
+    jumpFlipTime += dt
+    // Do a full front flip + 360 twist over ~1.5 seconds
+    const flipProgress = Math.min(jumpFlipTime / 1.5, 1)
+    const flipAngle = flipProgress * Math.PI * 2  // full front flip
+    const twistAngle = flipProgress * Math.PI * 2  // full 360 twist
+    carBody.quaternion.setFromEuler(flipAngle, carAngle + twistAngle, 0)
+    // When close to landing (falling down and near ground), snap upright
+    if (carBody.position.y < 4 && carBody.velocity.y < 0 && flipProgress > 0.7) {
+      jumpFlipActive = false
+      carBody.quaternion.setFromEuler(0, carAngle, 0)
+      carBody.angularVelocity.setZero()
+    }
+  } else {
+    carBody.quaternion.setFromEuler(0, carAngle, 0)
+    // Keep car from tipping
+    carBody.angularVelocity.x *= 0.5
+    carBody.angularVelocity.z *= 0.5
+  }
 
   // HUD
   document.getElementById('spd').textContent = Math.floor(Math.abs(carSpeed) * 3.6) + ' km/h'
