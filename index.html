@@ -349,6 +349,121 @@ function terrainNoise(x, z) {
   floorGeo.computeVertexNormals()
 }
 
+// ── Nova Land ground — white/baby blue zone north of z=-200 ──
+const novaFloorTex = (function() {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 256
+  const x = c.getContext('2d')
+  x.fillStyle = '#d8e8f0'; x.fillRect(0, 0, 256, 256)
+  x.strokeStyle = 'rgba(130,190,220,0.15)'; x.lineWidth = 1
+  const hexR = 24
+  for (let row = -1; row < 12; row++) {
+    for (let col = -1; col < 8; col++) {
+      const cx2 = col * hexR * 1.73 + (row % 2) * hexR * 0.866
+      const cy2 = row * hexR * 1.5
+      x.beginPath()
+      for (let i = 0; i < 6; i++) {
+        const a = Math.PI / 3 * i - Math.PI / 6
+        x.lineTo(cx2 + hexR * Math.cos(a), cy2 + hexR * Math.sin(a))
+      }
+      x.closePath(); x.stroke()
+    }
+  }
+  x.fillStyle = 'rgba(180,220,255,0.08)'
+  for (let row = 0; row < 10; row++) for (let col = 0; col < 7; col++) {
+    const cx2 = col * hexR * 1.73 + (row % 2) * hexR * 0.866
+    const cy2 = row * hexR * 1.5
+    x.beginPath(); x.arc(cx2, cy2, 3, 0, Math.PI * 2); x.fill()
+  }
+  const t = new THREE.CanvasTexture(c)
+  t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.RepeatWrapping
+  t.repeat.set(30, 30)
+  return t
+})()
+const novaFloorGeo = new THREE.PlaneGeometry(400, 400, 80, 80)
+const novaFloorMat = new THREE.MeshStandardMaterial({ color: 0xddeeff, roughness: 0.8, map: novaFloorTex })
+const novaFloor = new THREE.Mesh(novaFloorGeo, novaFloorMat)
+novaFloor.rotation.x = -Math.PI / 2
+novaFloor.position.z = -400 // flush with main map at z=-200
+novaFloor.receiveShadow = true
+scene.add(novaFloor)
+// Terrain noise for Nova Land
+{
+  const pos = novaFloorGeo.attributes.position
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i)
+    const h = terrainNoise(x, y - 400) * 0.7 // gentler hills
+    pos.setZ(i, h)
+  }
+  pos.needsUpdate = true
+  novaFloorGeo.computeVertexNormals()
+}
+
+// ── Boundary glow strip at z=-200 ──
+const boundaryGeo = new THREE.PlaneGeometry(400, 4)
+const boundaryMat = new THREE.MeshBasicMaterial({ color: 0xff69b4, transparent: true, opacity: 0.3, side: THREE.DoubleSide })
+const boundaryStrip = new THREE.Mesh(boundaryGeo, boundaryMat)
+boundaryStrip.rotation.x = -Math.PI / 2
+boundaryStrip.position.set(0, 0.05, -200)
+scene.add(boundaryStrip)
+// Glowing pillars at boundary
+for (let bx = -180; bx <= 180; bx += 40) {
+  const pillar = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.3, 0.3, 6, 6),
+    new THREE.MeshStandardMaterial({ color: 0xff88cc, emissive: 0xff69b4, emissiveIntensity: 1 })
+  )
+  pillar.position.set(bx, 3, -200)
+  scene.add(pillar)
+}
+
+// ── Nova Land state ──
+let inNovaLand = false
+
+// ── Nova Land sky — fluffy clouds (hidden until entering zone) ──
+const novaClouds = []
+for (let i = 0; i < 15; i++) {
+  const size = 30 + Math.random() * 50
+  const cloud = new THREE.Mesh(
+    new THREE.SphereGeometry(size * 0.4, 8, 6),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, side: THREE.DoubleSide })
+  )
+  cloud.position.set(
+    (Math.random() - 0.5) * 350,
+    60 + Math.random() * 40,
+    -200 - Math.random() * 380
+  )
+  cloud.scale.set(2, 0.6, 1)
+  scene.add(cloud)
+  novaClouds.push(cloud)
+}
+
+// ── Nova Land title billboard ──
+const novaTitleCanvas = document.createElement('canvas')
+novaTitleCanvas.width = 2048; novaTitleCanvas.height = 512
+const ntctx = novaTitleCanvas.getContext('2d')
+const ntGrad = ntctx.createLinearGradient(0,0,0,512)
+ntGrad.addColorStop(0, 'rgba(255,105,180,0.3)')
+ntGrad.addColorStop(0.5, 'rgba(255,182,193,0.15)')
+ntGrad.addColorStop(1, 'rgba(0,0,0,0)')
+ntctx.fillStyle = ntGrad; ntctx.fillRect(0,0,2048,512)
+ntctx.textAlign = 'center'; ntctx.textBaseline = 'middle'
+ntctx.font = 'bold 180px Impact, sans-serif'
+ntctx.fillStyle = '#000'; ntctx.fillText('NOVA LAND', 1028, 215)
+ntctx.strokeStyle = '#ff69b4'; ntctx.lineWidth = 10; ntctx.strokeText('NOVA LAND', 1024, 210)
+ntctx.fillStyle = '#FFB6C1'; ntctx.fillText('NOVA LAND', 1024, 210)
+ntctx.fillStyle = 'rgba(255,255,255,0.35)'; ntctx.fillRect(200, 140, 1648, 40)
+ntctx.font = 'bold 40px sans-serif'; ntctx.fillStyle = '#fff'
+ntctx.fillText('WELCOME  TO  NOVA  LAND', 1024, 400)
+const novaTitleTex = new THREE.CanvasTexture(novaTitleCanvas)
+novaTitleTex.minFilter = THREE.LinearFilter
+const novaTitleGroup = new THREE.Group()
+novaTitleGroup.position.set(0, 12, -225)
+const novaTitleMesh = new THREE.Mesh(
+  new THREE.PlaneGeometry(40, 10),
+  new THREE.MeshBasicMaterial({ map: novaTitleTex, transparent: true, side: THREE.DoubleSide, opacity: 0 })
+)
+novaTitleGroup.add(novaTitleMesh)
+scene.add(novaTitleGroup)
+
 const floorBody = new CANNON.Body({
   type: CANNON.Body.STATIC,
   shape: new CANNON.Plane(),
@@ -985,7 +1100,7 @@ function updateCreatures(dt) {
     }
 
     c.x = Math.max(-180, Math.min(180, c.x))
-    c.z = Math.max(-180, Math.min(180, c.z))
+    c.z = Math.max(-580, Math.min(180, c.z))
 
     // Collision: car hits creature — red flash, push CREATURE away (not the car)
     // Skip if airborne (jumping/gliding over them) or giant mode
@@ -1147,6 +1262,90 @@ for (let i = 0; i < 24; i++) {
   light.position.set(x + 1.5, groundY + 4.5, z)
   scene.add(light)
   streetlights.push({ lantern, light })
+}
+
+// ── Nova Land trees — cherry blossoms (pink canopies) ──
+for (let i = 0; i < 30; i++) {
+  const x = (Math.random() - 0.5) * 320
+  const z = -220 - Math.random() * 360
+  const groundY = terrainNoise(x, z) * 0.5
+  const trunkH = 5 + Math.random() * 3
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.4, 0.6, trunkH, 6),
+    new THREE.MeshStandardMaterial({ color: 0x8b6b4a, roughness: 0.9 })
+  )
+  trunk.position.set(x, groundY + trunkH / 2, z)
+  trunk.castShadow = true
+  scene.add(trunk)
+  const canopy = new THREE.Mesh(
+    new THREE.SphereGeometry(3 + Math.random() * 2, 8, 6),
+    new THREE.MeshStandardMaterial({ color: 0xffb7c5, roughness: 0.7, flatShading: true })
+  )
+  canopy.position.set(x, groundY + trunkH + 1.5, z)
+  canopy.castShadow = true
+  scene.add(canopy)
+  treePositions.push([x, z])
+}
+
+// ── Nova Land streetlights (white/pink glow) ──
+const novaSlMat = new THREE.MeshStandardMaterial({ color: 0xffeef5, emissive: 0xffbbdd, emissiveIntensity: 0, roughness: 0.3 })
+for (let i = 0; i < 16; i++) {
+  const angle = (i / 16) * Math.PI * 2
+  const radius = 50 + (i % 3) * 40
+  const x = Math.cos(angle) * radius
+  const z = -400 + Math.sin(angle) * radius
+  const groundY = terrainNoise(x, z) * 0.5
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 5, 6), new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.5 }))
+  post.position.set(x, groundY + 2.5, z)
+  scene.add(post)
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.1, 0.1), new THREE.MeshStandardMaterial({ color: 0xdddddd }))
+  arm.position.set(x + 0.75, groundY + 5, z)
+  scene.add(arm)
+  const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.3, 6, 6), novaSlMat.clone())
+  lantern.position.set(x + 1.5, groundY + 4.8, z)
+  scene.add(lantern)
+  const light = new THREE.PointLight(0xffccee, 0, 15)
+  light.position.set(x + 1.5, groundY + 4.5, z)
+  scene.add(light)
+  streetlights.push({ lantern, light })
+}
+
+// ── Nova Land powerups ──
+for (let i = 0; i < 14; i++) {
+  const t = puTypes[i % puTypes.length]
+  const x = (Math.random()-0.5) * 320, z = -220 - Math.random() * 350
+  const mat = new THREE.SpriteMaterial({ map: puIcons[t.effect], transparent: true, depthTest: false })
+  const mesh = new THREE.Sprite(mat)
+  mesh.scale.set(8, 8, 1)
+  mesh.position.set(x, 4, z)
+  scene.add(mesh)
+  powerupMeshes.push({ mesh, type: t, x, z, collected: false, bob: Math.random()*Math.PI*2 })
+}
+
+// ── Nova Land creatures ──
+const novaCreatureDefs = [
+  { type: 'smalldino', count: 3, speed: 2, chaseSpeed: 5, chaseRange: 25, giveUp: 45 },
+  { type: 'raptor',  count: 4, speed: 4, chaseSpeed: 9, chaseRange: 28, giveUp: 42 },
+  { type: 'wolf',     count: 5, speed: 3, chaseSpeed: 7, chaseRange: 22, giveUp: 40 },
+]
+for (const def of novaCreatureDefs) {
+  for (let i = 0; i < def.count; i++) {
+    const x = (Math.random()-0.5) * 300
+    const z = -220 - Math.random() * 350
+    const mesh = buildCreature(def.type)
+    mesh.position.set(x, 0, z)
+    scene.add(mesh)
+    creatureList.push({
+      type: def.type, mesh, x, z,
+      angle: Math.random() * Math.PI * 2,
+      state: 'wander', anim: Math.random() * Math.PI * 2,
+      speed: def.speed, chaseSpeed: def.chaseSpeed,
+      chaseRange: def.chaseRange, giveUp: def.giveUp,
+      homeX: x, homeZ: z,
+      wanderTarget: { x: x + (Math.random()-0.5)*30, z: z + (Math.random()-0.5)*30 },
+      wanderTimer: 120 + Math.random() * 180,
+    })
+  }
 }
 
 // ════════════════════════════════════════════════════════════
@@ -1733,32 +1932,36 @@ function drawSpeedo(mph) {
 // ── Minimap renderer ──
 const minimapCanvas = document.getElementById('minimap')
 const mmCtx = minimapCanvas.getContext('2d')
-const mmSize = 150, mmScale = mmSize / 400 // 400 = map width
+// Minimap covers full extended map: x: -200 to +200 (400), z: -600 to +200 (800)
+const mmW = 100, mmH = 200 // taller for extended map
+const mmScaleX = mmW / 400, mmScaleZ = mmH / 800
+// Resize minimap canvas
+minimapCanvas.width = mmW; minimapCanvas.height = mmH
+minimapCanvas.style.width = mmW + 'px'; minimapCanvas.style.height = mmH + 'px'
 
 function drawMinimap() {
   if (spaceMode || onPlanet >= 0) { minimapCanvas.style.opacity = '0.3'; return }
   minimapCanvas.style.opacity = '1'
   const ctx = mmCtx
-  ctx.clearRect(0, 0, mmSize, mmSize)
+  ctx.clearRect(0, 0, mmW, mmH)
 
-  // Background
-  ctx.fillStyle = 'rgba(0,0,0,0.6)'
-  ctx.fillRect(0, 0, mmSize, mmSize)
+  // Background — two zones
+  ctx.fillStyle = 'rgba(0,20,0,0.5)'
+  ctx.fillRect(0, mmH/2, mmW, mmH/2) // main map (z: -200 to +200 → bottom half)
+  ctx.fillStyle = 'rgba(20,10,20,0.5)'
+  ctx.fillRect(0, 0, mmW, mmH/2) // Nova Land (z: -600 to -200 → top half)
 
-  // Map boundary
-  ctx.strokeStyle = 'rgba(100,200,80,0.3)'
+  // Boundary line
+  ctx.strokeStyle = 'rgba(255,105,180,0.5)'
   ctx.lineWidth = 1
-  ctx.strokeRect(0, 0, mmSize, mmSize)
+  ctx.beginPath(); ctx.moveTo(0, mmH/2); ctx.lineTo(mmW, mmH/2); ctx.stroke()
 
-  // Grid lines
-  ctx.strokeStyle = 'rgba(255,255,255,0.05)'
-  for (let i = 1; i < 4; i++) {
-    ctx.beginPath(); ctx.moveTo(i * mmSize/4, 0); ctx.lineTo(i * mmSize/4, mmSize); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(0, i * mmSize/4); ctx.lineTo(mmSize, i * mmSize/4); ctx.stroke()
-  }
+  // Map border
+  ctx.strokeStyle = 'rgba(100,200,80,0.2)'
+  ctx.strokeRect(0, 0, mmW, mmH)
 
   // Helper: world coords to minimap coords
-  const toMM = (wx, wz) => [(wx + 200) * mmScale, (wz + 200) * mmScale]
+  const toMM = (wx, wz) => [(wx + 200) * mmScaleX, (wz + 600) * mmScaleZ]
 
   // Powerups (uncollected)
   for (const p of powerupMeshes) {
@@ -1799,16 +2002,9 @@ function drawMinimap() {
   ctx.rotate(-carAngle)
   ctx.fillStyle = '#ffffff'
   ctx.beginPath()
-  ctx.moveTo(0, -5); ctx.lineTo(-3.5, 4); ctx.lineTo(3.5, 4)
+  ctx.moveTo(0, -4); ctx.lineTo(-2.5, 3); ctx.lineTo(2.5, 3)
   ctx.closePath(); ctx.fill()
   ctx.restore()
-
-  // Radial fade at edges
-  const grad = ctx.createRadialGradient(mmSize/2, mmSize/2, mmSize*0.35, mmSize/2, mmSize/2, mmSize*0.5)
-  grad.addColorStop(0, 'rgba(0,0,0,0)')
-  grad.addColorStop(1, 'rgba(0,0,0,0.7)')
-  ctx.fillStyle = grad
-  ctx.fillRect(0, 0, mmSize, mmSize)
 }
 
 function updateHUD(dt) {
@@ -1831,7 +2027,7 @@ function updateHUD(dt) {
   }
 
   // Game mode label (reset if on ground)
-  if (!spaceMode && onPlanet < 0) gameModeEl.textContent = 'EXPLORE'
+  if (!spaceMode && onPlanet < 0 && !inNovaLand) { gameModeEl.textContent = 'EXPLORE'; gameModeEl.style.color = '#ffd700' }
 
   // Game info — status (drift / glide / powerup)
   let status = ''
@@ -2139,7 +2335,8 @@ let _approachingPlanet = false
 // ════════════════════════════════════════════════════════════
 function checkBounds() {
   const p = carBody.position
-  const offMap = Math.abs(p.x) > 195 || Math.abs(p.z) > 195
+  // Extended map: x: -195 to +195, z: -595 to +195 (Nova Land extends north)
+  const offMap = Math.abs(p.x) > 195 || p.z > 195 || p.z < -595
 
   // If on a planet, don't reset
   if (onPlanet >= 0) return
@@ -2247,6 +2444,55 @@ function removeSuperGlider() {
 let timeOfDay = 0.3 // start at morning (0=midnight, 0.25=sunrise, 0.5=noon, 0.75=sunset)
 const hemiLight = scene.children.find(c => c.isHemisphereLight)
 const origBg = new THREE.Color(0x020010)
+
+// ════════════════════════════════════════════════════════════
+// NOVA LAND ZONE TRANSITION
+// ════════════════════════════════════════════════════════════
+let novaTransition = 0 // 0=normal world, 1=fully in nova land
+
+function updateNovaLand(dt) {
+  if (spaceMode || onPlanet >= 0) return
+
+  const wasInNova = inNovaLand
+  inNovaLand = carBody.position.z < -200
+
+  // Smooth transition factor
+  const target = inNovaLand ? 1 : 0
+  novaTransition += (target - novaTransition) * Math.min(1, dt * 3)
+
+  // Car skin — auto-swap to Barbie in Nova Land (unless manually set)
+  if (inNovaLand && !wasInNova && opts.carSkin === 0) {
+    applyCarSkin(1) // swap to Barbie
+  } else if (!inNovaLand && wasInNova && opts.carSkin === 0) {
+    applyCarSkin(0) // restore WRX
+  }
+
+  // Sky/clouds transition
+  for (const cloud of novaClouds) {
+    cloud.material.opacity = novaTransition * 0.6
+    // Gentle drift
+    cloud.position.x += dt * 2
+    if (cloud.position.x > 200) cloud.position.x -= 400
+  }
+
+  // Nova Land title
+  const titleDist = Math.abs(carBody.position.z - (-225))
+  const titleFade = inNovaLand ? Math.max(0, 1 - titleDist / 40) : 0
+  novaTitleMesh.material.opacity = titleFade
+  novaTitleGroup.lookAt(camera.position)
+  novaTitleGroup.position.y = 12 + Math.sin(performance.now() * 0.001) * 0.5
+
+  // Boundary strip pulse
+  boundaryMat.opacity = 0.2 + Math.sin(performance.now() * 0.003) * 0.1
+
+  // Update game mode display
+  if (inNovaLand && !spaceMode && onPlanet < 0) {
+    gameModeEl.textContent = 'NOVA LAND'
+    gameModeEl.style.color = '#ff69b4'
+  } else if (!inNovaLand && !spaceMode && onPlanet < 0) {
+    gameModeEl.style.color = '#ffd700'
+  }
+}
 
 function updateDayNight(dt) {
   if (spaceMode || onPlanet >= 0) return // freeze cycle in space
@@ -2762,6 +3008,7 @@ function loop() {
   updateTrail(dt)
   updateCoins()
   updateHUD(dt)
+  updateNovaLand(dt)
   updateDayNight(dt)
   updateTireTracks(dt)
   updateStunts(dt)
