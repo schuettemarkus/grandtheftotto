@@ -956,6 +956,75 @@ function buildCreature(type) {
     for (const side of [-1,1]) for (const fz of [-s*0.3,s*0.3]) g.add(mp(new THREE.BoxGeometry(s*0.1,s*0.45,s*0.12), bm, side*s*0.2,s*0.22,fz, {leg:true}))
     g.add(mp(new THREE.BoxGeometry(s*0.08,s*0.1,s*0.5), bm, 0,s*0.6,s*0.75, {tail:true}))
   }
+  else if (type === 'unicorn') {
+    const s = 2.5
+    const bm = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, flatShading: true })
+    const pm = new THREE.MeshStandardMaterial({ color: 0xffaadd, roughness: 0.5, flatShading: true })
+    const hm = new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xffaa00, emissiveIntensity: 0.6 })
+    // Body
+    g.add(mp(new THREE.BoxGeometry(s*0.5,s*0.45,s*1.2), bm, 0,s*0.7,0))
+    // Head
+    g.add(mp(new THREE.BoxGeometry(s*0.3,s*0.35,s*0.4), bm, 0,s*1.0,-s*0.65))
+    // Horn (golden, glowing)
+    const horn = mp(new THREE.ConeGeometry(s*0.06,s*0.5,5), hm, 0,s*1.4,-s*0.7)
+    horn.rotation.x = -0.2; g.add(horn)
+    // Mane (pink)
+    for (let i=0;i<4;i++) g.add(mp(new THREE.BoxGeometry(s*0.08,s*0.15,s*0.12), pm, 0,s*1.1,-s*0.3+i*s*0.15))
+    // Eyes
+    const em = new THREE.MeshStandardMaterial({color:0x4488ff,emissive:0x4488ff,emissiveIntensity:0.5})
+    for (const side of [-1,1]) g.add(mp(new THREE.SphereGeometry(s*0.04,5,5), em, side*s*0.13,s*1.05,-s*0.8))
+    // Legs
+    for (const side of [-1,1]) for (const fz of [-s*0.35,s*0.35]) g.add(mp(new THREE.BoxGeometry(s*0.1,s*0.55,s*0.12), bm, side*s*0.2,s*0.25,fz, {leg:true}))
+    // Tail (pink, flowing)
+    g.add(mp(new THREE.BoxGeometry(s*0.06,s*0.3,s*0.06), pm, 0,s*0.8,s*0.7, {tail:true}))
+  }
+  else if (type === 'horse') {
+    const s = 2.2
+    const bm = new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.7, flatShading: true })
+    const dm = new THREE.MeshStandardMaterial({ color: 0x5c3010, roughness: 0.7, flatShading: true })
+    // Body
+    g.add(mp(new THREE.BoxGeometry(s*0.5,s*0.4,s*1.2), bm, 0,s*0.7,0))
+    // Head
+    g.add(mp(new THREE.BoxGeometry(s*0.25,s*0.3,s*0.5), bm, 0,s*1.0,-s*0.7))
+    // Snout
+    g.add(mp(new THREE.BoxGeometry(s*0.18,s*0.15,s*0.25), dm, 0,s*0.9,-s*0.9))
+    // Ears
+    for (const side of [-1,1]) g.add(mp(new THREE.ConeGeometry(s*0.04,s*0.15,4), bm, side*s*0.1,s*1.2,-s*0.6))
+    // Eyes
+    const em = new THREE.MeshStandardMaterial({color:0x222222})
+    for (const side of [-1,1]) g.add(mp(new THREE.SphereGeometry(s*0.03,5,5), em, side*s*0.11,s*1.0,-s*0.82))
+    // Mane
+    for (let i=0;i<3;i++) g.add(mp(new THREE.BoxGeometry(s*0.06,s*0.18,s*0.08), dm, 0,s*1.1,-s*0.3+i*s*0.2))
+    // Legs
+    for (const side of [-1,1]) for (const fz of [-s*0.35,s*0.35]) g.add(mp(new THREE.BoxGeometry(s*0.1,s*0.55,s*0.12), bm, side*s*0.2,s*0.25,fz, {leg:true}))
+    // Tail
+    g.add(mp(new THREE.BoxGeometry(s*0.06,s*0.35,s*0.06), dm, 0,s*0.75,s*0.7, {tail:true}))
+  }
+  else if (type === 'chicken') {
+    const s = 0.8
+    const bm = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7, flatShading: true })
+    const rm = new THREE.MeshStandardMaterial({ color: 0xcc0000, roughness: 0.6, flatShading: true })
+    const ym = new THREE.MeshStandardMaterial({ color: 0xffaa00, roughness: 0.6, flatShading: true })
+    // Body (round)
+    g.add(mp(new THREE.SphereGeometry(s*0.5,6,6), bm, 0,s*0.6,0))
+    // Head
+    g.add(mp(new THREE.SphereGeometry(s*0.25,5,5), bm, 0,s*1.1,-s*0.3))
+    // Comb (red)
+    g.add(mp(new THREE.BoxGeometry(s*0.08,s*0.2,s*0.15), rm, 0,s*1.35,-s*0.3))
+    // Beak
+    g.add(mp(new THREE.ConeGeometry(s*0.06,s*0.15,4), ym, 0,s*1.05,-s*0.52))
+    // Wattle
+    g.add(mp(new THREE.SphereGeometry(s*0.06,4,4), rm, 0,s*0.95,-s*0.45))
+    // Eyes
+    const em = new THREE.MeshStandardMaterial({color:0x111111})
+    for (const side of [-1,1]) g.add(mp(new THREE.SphereGeometry(s*0.03,4,4), em, side*s*0.1,s*1.15,-s*0.45))
+    // Legs (thin, yellow)
+    for (const side of [-1,1]) g.add(mp(new THREE.BoxGeometry(s*0.06,s*0.4,s*0.06), ym, side*s*0.15,s*0.15,0, {leg:true}))
+    // Tail feathers
+    g.add(mp(new THREE.BoxGeometry(s*0.15,s*0.25,s*0.08), bm, 0,s*0.8,s*0.4, {tail:true}))
+    // Wings
+    for (const side of [-1,1]) g.add(mp(new THREE.BoxGeometry(s*0.05,s*0.25,s*0.3), bm, side*s*0.35,s*0.65,0, {wing:true,side}))
+  }
   return g
 }
 
@@ -1208,28 +1277,6 @@ for (let i = 0; i < 36; i++) {
   treePositions.push([x, z])
 }
 
-// ── Streetlights — emissive-only glow (no PointLights for perf) ──
-const streetlights = []
-const slPostMat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.8, metalness: 0.4 })
-const slLanternMat = new THREE.MeshStandardMaterial({ color: 0xffeecc, emissive: 0xffddaa, emissiveIntensity: 0, roughness: 0.3 })
-for (let i = 0; i < 24; i++) {
-  const angle = (i / 24) * Math.PI * 2
-  const radius = 60 + (i % 3) * 50
-  const x = Math.cos(angle) * radius
-  const z = Math.sin(angle) * radius
-  const groundY = terrainNoise(x, z) * Math.max(0, Math.min(1, (Math.sqrt(x*x+z*z) - 30) / 30))
-  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 5, 6), slPostMat)
-  post.position.set(x, groundY + 2.5, z)
-  scene.add(post)
-  const arm = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.1, 0.1), slPostMat)
-  arm.position.set(x + 0.75, groundY + 5, z)
-  scene.add(arm)
-  const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.3, 6, 6), slLanternMat.clone())
-  lantern.position.set(x + 1.5, groundY + 4.8, z)
-  scene.add(lantern)
-  streetlights.push({ lantern })
-}
-
 // ── Nova Land trees — cherry blossoms (pink canopies) ──
 for (let i = 0; i < 30; i++) {
   const x = (Math.random() - 0.5) * 320
@@ -1251,32 +1298,11 @@ for (let i = 0; i < 30; i++) {
   treePositions.push([x, z])
 }
 
-// ── Nova Land streetlights (emissive-only, no PointLights) ──
-const novaSlPostMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.5 })
-const novaSlMat = new THREE.MeshStandardMaterial({ color: 0xffeef5, emissive: 0xffbbdd, emissiveIntensity: 0, roughness: 0.3 })
-for (let i = 0; i < 16; i++) {
-  const angle = (i / 16) * Math.PI * 2
-  const radius = 50 + (i % 3) * 40
-  const x = Math.cos(angle) * radius
-  const z = -400 + Math.sin(angle) * radius
-  const groundY = terrainNoise(x, z) * 0.5
-  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 5, 6), novaSlPostMat)
-  post.position.set(x, groundY + 2.5, z)
-  scene.add(post)
-  const arm = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.1, 0.1), novaSlPostMat)
-  arm.position.set(x + 0.75, groundY + 5, z)
-  scene.add(arm)
-  const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.3, 6, 6), novaSlMat.clone())
-  lantern.position.set(x + 1.5, groundY + 4.8, z)
-  scene.add(lantern)
-  streetlights.push({ lantern })
-}
-
-// ── Nova Land creatures ──
+// ── Nova Land creatures — unicorns, horses, chickens ──
 const novaCreatureDefs = [
-  { type: 'smalldino', count: 3, speed: 2, chaseSpeed: 5, chaseRange: 25, giveUp: 45 },
-  { type: 'raptor',  count: 4, speed: 4, chaseSpeed: 9, chaseRange: 28, giveUp: 42 },
-  { type: 'wolf',     count: 5, speed: 3, chaseSpeed: 7, chaseRange: 22, giveUp: 40 },
+  { type: 'unicorn', count: 3, speed: 3, chaseSpeed: 7, chaseRange: 30, giveUp: 50 },
+  { type: 'horse',   count: 4, speed: 2.5, chaseSpeed: 6, chaseRange: 25, giveUp: 45 },
+  { type: 'chicken', count: 6, speed: 4, chaseSpeed: 8, chaseRange: 18, giveUp: 35 },
 ]
 for (const def of novaCreatureDefs) {
   for (let i = 0; i < def.count; i++) {
@@ -2507,11 +2533,7 @@ function updateDayNight(dt) {
   const headlightIntensity = 1 + (1 - dayFactor) * 3
   for (const hl of _cachedHeadlights) hl.material.emissiveIntensity = headlightIntensity
 
-  // Streetlights — emissive glow at night
   const nightFactor = Math.max(0, 1 - dayFactor * 2.5)
-  for (const sl of streetlights) {
-    sl.lantern.material.emissiveIntensity = nightFactor * 2.5
-  }
 
   // Planet glow — brighter at night
   for (const pd of planetData) {
