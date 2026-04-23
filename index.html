@@ -1120,13 +1120,43 @@ for (let i = 0; i < 36; i++) {
   treePositions.push([x, z])
 }
 
+// ── Streetlights — lantern posts that glow at night ──
+const streetlights = []
+const slPostMat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.8, metalness: 0.4 })
+const slLanternMat = new THREE.MeshStandardMaterial({ color: 0xffeecc, emissive: 0xffddaa, emissiveIntensity: 0, roughness: 0.3 })
+for (let i = 0; i < 24; i++) {
+  const angle = (i / 24) * Math.PI * 2
+  const radius = 60 + (i % 3) * 50
+  const x = Math.cos(angle) * radius
+  const z = Math.sin(angle) * radius
+  const groundY = terrainNoise(x, z) * Math.max(0, Math.min(1, (Math.sqrt(x*x+z*z) - 30) / 30))
+  // Post
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 5, 6), slPostMat)
+  post.position.set(x, groundY + 2.5, z)
+  scene.add(post)
+  // Arm
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.1, 0.1), slPostMat)
+  arm.position.set(x + 0.75, groundY + 5, z)
+  scene.add(arm)
+  // Lantern
+  const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.3, 6, 6), slLanternMat.clone())
+  lantern.position.set(x + 1.5, groundY + 4.8, z)
+  scene.add(lantern)
+  // Point light (dim, only visible at night)
+  const light = new THREE.PointLight(0xffddaa, 0, 15)
+  light.position.set(x + 1.5, groundY + 4.5, z)
+  scene.add(light)
+  streetlights.push({ lantern, light })
+}
+
 // ════════════════════════════════════════════════════════════
 // INPUT
 // ════════════════════════════════════════════════════════════
 const keys = {}
 let menuOpen = false
 let optSel = 0 // selected menu option index for Xbox nav
-const opts = { creatures: true, sound: false, powerups: true, location: 0, camera: 0, carSkin: 0 }
+const opts = { creatures: true, sound: false, powerups: true, location: 0, camera: 0, carSkin: 0, dayNight: 0 }
+const dayNightNames = ['Auto', 'Day', 'Night']
 const locNames = ['Grassland', 'Desert', 'Snow', 'Neon City']
 const locColors = [0x559944, 0xd2b48c, 0xeeeeff, 0x333344]
 const skinNames = ['WRX STI', 'Barbie Wagon']
@@ -1146,6 +1176,7 @@ function buildOptMenu() {
     { label: 'Location', key: 'location', val: locNames[opts.location] },
     { label: 'Camera', key: 'camera', val: camNames[opts.camera] },
     { label: 'Car', key: 'carSkin', val: skinNames[opts.carSkin] },
+    { label: 'Day/Night', key: 'dayNight', val: dayNightNames[opts.dayNight] },
   ]
   const totalItems = items.length + 2 // +2 for Start/Reset buttons at bottom
   items.forEach((it, idx) => {
@@ -1174,6 +1205,11 @@ window.toggleOpt = function(key) {
   else if (key === 'carSkin') {
     opts.carSkin = (opts.carSkin + 1) % skinNames.length
     applyCarSkin(opts.carSkin)
+  }
+  else if (key === 'dayNight') {
+    opts.dayNight = (opts.dayNight + 1) % dayNightNames.length
+    if (opts.dayNight === 1) timeOfDay = 0.35 // Day — lock to noon-ish
+    else if (opts.dayNight === 2) timeOfDay = 0.85 // Night — lock to midnight-ish
   }
   else opts[key] = !opts[key]
   if (key === 'creatures') creatureList.forEach(c => c.mesh.visible = opts.creatures)
@@ -1475,7 +1511,7 @@ function updateCar(dt) {
     }
     // Menu navigation with D-pad / A button when menu open
     if (menuOpen) {
-      const menuKeys = ['creatures','powerups','sound','location','camera','carSkin']
+      const menuKeys = ['creatures','powerups','sound','location','camera','carSkin','dayNight']
       const menuTotal = menuKeys.length + 2 // +2 for Start, Reset buttons
       if (gp.buttons[12]?.pressed && !keys._gpUp) { keys._gpUp=true; optSel=Math.max(0,optSel-1); buildOptMenu(); setTimeout(()=>keys._gpUp=false,200) }
       if (gp.buttons[13]?.pressed && !keys._gpDn) { keys._gpDn=true; optSel=Math.min(menuTotal-1,optSel+1); buildOptMenu(); setTimeout(()=>keys._gpDn=false,200) }
@@ -2215,7 +2251,8 @@ const origBg = new THREE.Color(0x020010)
 function updateDayNight(dt) {
   if (spaceMode || onPlanet >= 0) return // freeze cycle in space
 
-  timeOfDay = (timeOfDay + dt / 120) % 1 // 120s = 2 min full cycle
+  // Only auto-cycle in Auto mode
+  if (opts.dayNight === 0) timeOfDay = (timeOfDay + dt / 120) % 1 // 120s = 2 min full cycle
 
   // Sun position — arcs across the sky
   const sunAngle = timeOfDay * Math.PI * 2 - Math.PI / 2 // -90° at midnight
@@ -2250,6 +2287,29 @@ function updateDayNight(dt) {
         child.material.emissiveIntensity !== undefined && child.material.color &&
         child.material.color.getHex() === 0xffffff && child.material.emissive.getHex() === 0xffffcc) {
       child.material.emissiveIntensity = headlightIntensity
+    }
+  })
+
+  // Streetlights — on at night, off during day
+  const nightFactor = Math.max(0, 1 - dayFactor * 2.5)
+  for (const sl of streetlights) {
+    sl.lantern.material.emissiveIntensity = nightFactor * 2
+    sl.light.intensity = nightFactor * 1.5
+  }
+
+  // Planet glow — brighter at night for visible landmarks in space
+  for (const pd of planetData) {
+    pd.mesh.material.emissiveIntensity = 0.1 + nightFactor * 0.3
+    pd.atmo.material.opacity = 0.06 + nightFactor * 0.08
+  }
+
+  // Nebula glow brighter at night
+  scene.traverse(child => {
+    if (child.isMesh && child.material && child.material.opacity < 0.1 && child.material.opacity > 0.01 &&
+        child.geometry?.type === 'SphereGeometry' && child.material.side === THREE.DoubleSide &&
+        !child.material.emissive) {
+      // Nebula meshes
+      child.material.opacity = 0.04 + nightFactor * 0.06
     }
   })
 
