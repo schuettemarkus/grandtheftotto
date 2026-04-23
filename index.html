@@ -2360,8 +2360,16 @@ function checkBounds() {
 
 function enterSpaceMode() {
   spaceMode = true
-  spacePitch = 0
   spaceYaw = carAngle
+  // Preserve current velocity direction as initial flight angle
+  const vel = carBody.velocity
+  const hSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z)
+  spacePitch = hSpeed > 1 ? Math.atan2(vel.y, hSpeed) : 0.15 // slight upward if slow
+  // Compute initial flight direction from actual velocity
+  if (hSpeed > 1) {
+    _spaceDir.set(vel.x, vel.y, vel.z).normalize()
+    spaceYaw = Math.atan2(-vel.x, -vel.z)
+  }
   carBody.type = CANNON.Body.KINEMATIC
   deploySuperGlider()
   // Lazy-load planet atmospheres + portals on first space entry
@@ -2506,10 +2514,10 @@ function updateDayNight(dt) {
   const sunX = Math.cos(sunAngle) * 50
   sun.position.set(sunX, Math.max(2, sunHeight * 60), 20)
 
-  // Sun intensity — bright during day, dim at night
+  // Sun intensity — bright during day, 30% at night (never fully dark)
   const dayFactor = Math.max(0, sunHeight) // 0 at night, 1 at noon
-  sun.intensity = 0.2 + dayFactor * 1.5
-  if (hemiLight) hemiLight.intensity = 0.15 + dayFactor * 0.7
+  sun.intensity = 0.5 + dayFactor * 1.2
+  if (hemiLight) hemiLight.intensity = 0.35 + dayFactor * 0.5
 
   // Sky color — dark blue at night, light blue at day, orange at sunrise/sunset
   const isTransition = Math.abs(sunHeight) < 0.3
@@ -2519,7 +2527,8 @@ function updateDayNight(dt) {
     const skyB = isTransition ? 0.2 + dayFactor * 0.3 : 0.6 + dayFactor * 0.3
     scene.background.setRGB(skyR * 0.15, skyG * 0.15, skyB * 0.2)
   } else {
-    scene.background.copy(origBg)
+    // Night — not pitch black, keep ~30% brightness
+    scene.background.setRGB(0.02, 0.015, 0.04)
   }
 
   // Stars opacity — bright at night, invisible during day
@@ -2545,8 +2554,8 @@ function updateDayNight(dt) {
   // Nebula glow brighter at night (cached refs)
   for (const neb of nebulaMeshes) neb.material.opacity = 0.04 + nightFactor * 0.06
 
-  // Tone mapping exposure
-  renderer.toneMappingExposure = 0.6 + dayFactor * 0.7
+  // Tone mapping exposure — never below 0.8 (70% brightness at night)
+  renderer.toneMappingExposure = 0.8 + dayFactor * 0.5
 }
 
 // ════════════════════════════════════════════════════════════
@@ -2891,17 +2900,22 @@ function updateSpaceFlight(dt) {
       _approachingPlanet = true
     }
 
-    // Landing — within radius + buffer
-    if (dist < pd.radius + 8) {
-      // Land on planet!
+    // Landing — within radius + generous buffer so car doesn't clip into planet
+    if (dist < pd.radius + 15) {
+      // Land on planet — enter rounded surface driving mode
       onPlanet = i
       spaceMode = false
       carBody.type = CANNON.Body.KINEMATIC
-      carSpeed = Math.min(carSpeed, 10) // slow down on landing
+      carSpeed = Math.min(Math.abs(carSpeed), 15) * Math.sign(carSpeed || 1)
 
-      // Place on surface
-      const toSurface = new THREE.Vector3().subVectors(carBody.position, pd.pos).normalize()
-      carBody.position.copy(pd.pos).add(toSurface.multiplyScalar(pd.radius + carH * 0.5))
+      // Place safely on surface (not inside)
+      const toSurface = _tv1.subVectors(carBody.position, pd.pos).normalize()
+      carBody.position.copy(pd.pos).addScaledVector(toSurface, pd.radius + carH * 0.5 + 1)
+      carBody.velocity.setZero()
+      carBody.angularVelocity.setZero()
+
+      // Init local planet coordinates
+      pd._localX = 0; pd._localZ = 0
 
       // Discovery popup
       if (!pd.discovered) {
@@ -2968,6 +2982,16 @@ function loop() {
   updateCar(dt)
   updateSpaceFlight(dt)
   if (!spaceMode && onPlanet < 0) world.step(1/60, dt, 3)
+
+  // Terrain follow — lift car to match visual ground height
+  if (!spaceMode && onPlanet < 0 && !isAirborne) {
+    const cx = carBody.position.x, cz = carBody.position.z
+    const distC = Math.sqrt(cx*cx + cz*cz)
+    const flatBlend = Math.max(0, Math.min(1, (distC - 30) / 30))
+    const groundH = terrainNoise(cx, cz) * flatBlend
+    const minY = groundH + carH * 0.5
+    if (carBody.position.y < minY) carBody.position.y = minY
+  }
 
   carGroup.position.copy(carBody.position)
   carGroup.quaternion.copy(carBody.quaternion)
