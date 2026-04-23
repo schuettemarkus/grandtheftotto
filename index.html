@@ -1,308 +1,586 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Grand Theft Otto</title>
-  <style>
-    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { overflow: hidden; height: 100%; background: #111; }
-    canvas.webgl { position: fixed; top: 0; left: 0; width: 100%; height: 100%; outline: none; }
-    #loading {
-      position: fixed; inset: 0; z-index: 100;
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      background: #111; color: #fff; font-family: 'Segoe UI', sans-serif;
-      transition: opacity 0.6s;
-    }
-    #loading.hidden { opacity: 0; pointer-events: none; }
-    #loading h1 { font-size: 2.5rem; margin-bottom: 1rem; color: #ffd700; letter-spacing: 0.15em; }
-    #loading .bar-bg {
-      width: 300px; height: 8px; background: #333; border-radius: 4px; overflow: hidden;
-    }
-    #loading .bar-fill {
-      height: 100%; width: 0%; background: #ffd700; transition: width 0.3s;
-    }
-    #loading .hint { margin-top: 1rem; font-size: 0.85rem; color: #888; }
-    /* HUD — bottom-left dashboard */
-    #hud {
-      position: fixed; bottom: 20px; left: 20px; z-index: 10;
-      color: #fff; font-family: 'Segoe UI', monospace; pointer-events: none;
-    }
-    #hud .dash {
-      background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 10px; padding: 12px 18px; min-width: 180px;
-    }
-    #hud .speed-row { display: flex; align-items: baseline; gap: 6px; }
-    #hud .speed-val { font-size: 2.4rem; font-weight: bold; line-height: 1; }
-    #hud .speed-unit { font-size: 0.85rem; color: #aaa; }
-    #hud .gear-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
-    #hud .gear { font-size: 1.4rem; font-weight: bold; color: #ffd700; min-width: 28px; }
-    #hud .rpm-bar { flex: 1; height: 6px; background: #222; border-radius: 3px; overflow: hidden; }
-    #hud .rpm-fill { height: 100%; border-radius: 3px; transition: width 0.05s; }
-    #hud .vehicle-name { font-size: 0.75rem; color: #888; margin-top: 4px; }
-    #hud .mode-badge { display: inline-block; font-size: 0.7rem; color: #111; background: #ffd700; padding: 1px 8px; border-radius: 3px; margin-top: 4px; }
-    #hud .coin-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 0.9rem; }
-    #hud .coin-icon { color: #ffd700; font-size: 1.1rem; }
-    #hud .boost-bar {
-      width: 100%; height: 5px; background: #222; border-radius: 3px; margin-top: 6px; overflow: hidden;
-    }
-    #hud .boost-fill { height: 100%; background: #00ccff; transition: width 0.1s; }
-    /* Controls manual — bottom-right */
-    #controls-manual {
-      position: fixed; bottom: 20px; right: 20px; z-index: 10;
-      pointer-events: none; text-align: right;
-      background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 8px; padding: 10px 14px; color: #999;
-      font-family: monospace; font-size: 0.7rem; line-height: 1.6;
-    }
-    #controls-manual .key { color: #ddd; font-weight: bold; }
-    /* Powerup toast — bottom center */
-    #powerup-toast {
-      position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%);
-      z-index: 11; pointer-events: none; text-align: center;
-      font-family: 'Segoe UI', sans-serif; font-size: 1.2rem; font-weight: bold;
-      color: #fff; text-shadow: 0 0 15px rgba(0,0,0,0.8);
-      opacity: 0; transition: opacity 0.3s;
-      background: rgba(0,0,0,0.6); padding: 8px 24px; border-radius: 8px;
-    }
-    #powerup-toast.visible { opacity: 1; }
-    #powerup-toast .icon { font-size: 1.6rem; margin-right: 8px; vertical-align: middle; }
-    /* Coin milestone banner */
-    #milestone-banner {
-      position: fixed; top: 20%; left: 50%; transform: translateX(-50%);
-      z-index: 12; pointer-events: none; text-align: center;
-      font-family: 'Segoe UI', sans-serif; font-weight: bold;
-      opacity: 0; transition: opacity 0.5s;
-    }
-    #milestone-banner.visible { opacity: 1; }
-    #milestone-banner .title { font-size: 2rem; color: #ffd700; text-shadow: 0 0 20px rgba(255,215,0,0.5); }
-    #milestone-banner .sub { font-size: 1rem; color: #fff; margin-top: 4px; }
-    /* Portal prompt */
-    #portal-prompt {
-      position: fixed; top: 30%; left: 50%; transform: translateX(-50%);
-      color: #ffd700; font-family: 'Segoe UI', sans-serif; font-size: 1.3rem;
-      text-align: center; pointer-events: none; z-index: 10;
-      text-shadow: 0 0 10px rgba(255,215,0,0.5);
-      opacity: 0; transition: opacity 0.3s;
-    }
-    #portal-prompt.visible { opacity: 1; }
-    /* Race HUD */
-    #race-hud {
-      position: fixed; top: 20px; right: 20px; z-index: 10;
-      color: #fff; font-family: monospace; text-align: right; pointer-events: none;
-      display: none;
-    }
-    #race-hud .lap { font-size: 1.2rem; }
-    #race-hud .time { font-size: 1.5rem; font-weight: bold; color: #0f0; }
-    #race-hud .position { font-size: 1.8rem; color: #ffd700; font-weight: bold; }
-    /* Garage UI */
-    #garage-ui {
-      position: fixed; inset: 0; z-index: 20; display: none;
-      background: rgba(0,0,0,0.92);
-      font-family: 'Segoe UI', sans-serif; color: #fff;
-    }
-    #garage-ui .title { text-align: center; font-size: 2rem; padding: 20px; color: #ffd700; letter-spacing: 0.1em; }
-    #garage-ui .car-list {
-      display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; padding: 0 40px;
-      max-height: calc(100vh - 160px); overflow-y: auto;
-    }
-    #garage-ui .car-card {
-      width: 200px; padding: 15px; background: rgba(255,255,255,0.05);
-      border: 1px solid #333; border-radius: 8px; cursor: pointer;
-      transition: border-color 0.2s, background 0.2s;
-    }
-    #garage-ui .car-card:hover { border-color: #ffd700; background: rgba(255,215,0,0.05); }
-    #garage-ui .car-card.selected { border-color: #ffd700; background: rgba(255,215,0,0.1); }
-    #garage-ui .car-card h3 { font-size: 0.95rem; margin-bottom: 6px; }
-    #garage-ui .car-card .class-tag {
-      display: inline-block; padding: 2px 8px; border-radius: 3px;
-      font-size: 0.7rem; font-weight: bold; margin-bottom: 8px;
-    }
-    #garage-ui .car-card .class-tag.offroad { background: #556b2f; }
-    #garage-ui .car-card .class-tag.racing { background: #8b0000; }
-    #garage-ui .car-card .stat { font-size: 0.75rem; color: #aaa; margin: 2px 0; }
-    #garage-ui .car-card .stat-row {
-      display: flex; align-items: center; gap: 6px; font-size: 0.7rem; color: #aaa; margin: 3px 0;
-    }
-    #garage-ui .car-card .stat-row span:first-child { width: 36px; text-align: right; }
-    #garage-ui .car-card .stat-bar {
-      flex: 1; height: 5px; background: #222; border-radius: 3px; overflow: hidden;
-    }
-    #garage-ui .car-card .stat-fill { height: 100%; border-radius: 3px; }
-    #garage-ui .car-card .stat-val { width: 44px; font-size: 0.65rem; color: #777; }
-    #garage-ui .car-card .car-blurb {
-      font-size: 0.7rem; color: #666; font-style: italic; margin-top: 6px; line-height: 1.3;
-    }
-    #garage-ui .car-card .colors { display: flex; gap: 4px; margin-top: 8px; }
-    #garage-ui .car-card .color-dot {
-      width: 18px; height: 18px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;
-    }
-    #garage-ui .car-card .color-dot.active { border-color: #fff; }
-    #garage-ui .drive-btn {
-      display: block; margin: 20px auto; padding: 12px 40px;
-      background: #ffd700; color: #111; font-weight: bold; font-size: 1rem;
-      border: none; border-radius: 6px; cursor: pointer;
-    }
-    #garage-ui .drive-btn:hover { background: #ffed4a; }
-    #garage-ui .back-btn {
-      position: absolute; top: 15px; left: 20px; background: none; border: 1px solid #555;
-      color: #aaa; padding: 6px 16px; border-radius: 4px; cursor: pointer; font-size: 0.85rem;
-    }
-    #garage-ui .back-btn:hover { border-color: #fff; color: #fff; }
-    /* Fade overlay for transitions */
-    #fade {
-      position: fixed; inset: 0; z-index: 50; background: #000;
-      opacity: 0; pointer-events: none; transition: opacity 0.5s;
-    }
-    #fade.active { opacity: 1; }
-    /* Off-map respawn timer */
-    #offmap-timer {
-      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-      z-index: 12; pointer-events: none; text-align: center; display: none;
-    }
-    #offmap-timer .label { color: #ff4444; font-family: monospace; font-size: 1rem; }
-    #offmap-timer .count { color: #fff; font-family: monospace; font-size: 4rem; font-weight: bold; }
-    /* Options menu */
-    #options-menu {
-      position: fixed; inset: 0; z-index: 60; display: none;
-      background: rgba(0,0,0,0.88);
-      font-family: 'Segoe UI', sans-serif; color: #fff;
-    }
-    #options-menu .panel {
-      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-      width: 380px; background: rgba(30,30,30,0.95); border: 1px solid #444;
-      border-radius: 12px; padding: 30px; text-align: center;
-    }
-    #options-menu h2 { color: #ffd700; font-size: 1.6rem; margin-bottom: 20px; letter-spacing: 0.1em; }
-    #options-menu .opt-row {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 10px 0; border-bottom: 1px solid #333;
-    }
-    #options-menu .opt-row:last-child { border-bottom: none; }
-    #options-menu .opt-label { font-size: 0.95rem; }
-    #options-menu .opt-btn {
-      background: #333; color: #fff; border: 1px solid #555; padding: 6px 16px;
-      border-radius: 4px; cursor: pointer; font-size: 0.85rem;
-    }
-    #options-menu .opt-btn:hover { background: #555; border-color: #888; }
-    #options-menu .opt-btn.active { background: #ffd700; color: #111; border-color: #ffd700; }
-    #options-menu .geo-group { display: flex; gap: 6px; flex-wrap: wrap; }
-    #options-menu .geo-btn {
-      background: #333; color: #ccc; border: 1px solid #555; padding: 5px 12px;
-      border-radius: 4px; cursor: pointer; font-size: 0.8rem;
-    }
-    #options-menu .geo-btn:hover { background: #555; }
-    #options-menu .geo-btn.selected { background: #ffd700; color: #111; border-color: #ffd700; }
-    #options-menu .resume-btn {
-      margin-top: 20px; padding: 10px 30px; background: #ffd700; color: #111;
-      border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 1rem;
-    }
-    #options-menu .resume-btn:hover { background: #ffed4a; }
-    #options-menu .restart-btn {
-      margin-top: 10px; padding: 8px 24px; background: none; color: #ff4444;
-      border: 1px solid #ff4444; border-radius: 6px; cursor: pointer; font-size: 0.9rem;
-    }
-    #options-menu .restart-btn:hover { background: rgba(255,68,68,0.15); }
-    /* Touch controls */
-    #touch-controls {
-      position: fixed; bottom: 0; left: 0; right: 0; z-index: 15;
-      display: none; pointer-events: none;
-    }
-    @media (hover: none) and (pointer: coarse) {
-      #touch-controls { display: flex; }
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Grand Theft Otto</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{overflow:hidden;height:100%;background:#1a1a2e;font-family:'Segoe UI',sans-serif}
+canvas{display:block;position:fixed;top:0;left:0}
+#hud{position:fixed;bottom:20px;left:20px;color:#fff;font-family:monospace;pointer-events:none;z-index:10}
+#hud .speed{font-size:2rem;font-weight:bold}
+#hud .info{font-size:0.75rem;color:#aaa;margin-top:4px}
+#loading{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#1a1a2e;color:#fff;transition:opacity 0.8s}
+#loading.done{opacity:0;pointer-events:none}
+#loading h1{font-size:2.5rem;color:#ffd700;letter-spacing:0.15em;margin-bottom:0.5rem}
+#loading p{color:#888;font-size:0.9rem}
+</style>
 </head>
 <body>
-  <canvas class="webgl"></canvas>
+<div id="loading"><h1>GRAND THEFT OTTO</h1><p>Loading...</p></div>
+<div id="hud">
+  <div class="speed" id="spd">0 km/h</div>
+  <div class="info">WASD / Arrows: Drive &nbsp; Space: Boost &nbsp; R: Reset</div>
+</div>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js'
+import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js'
 
-  <div id="loading">
-    <h1>GRAND THEFT OTTO</h1>
-    <div class="bar-bg"><div class="bar-fill" id="load-bar"></div></div>
-    <div class="hint">Loading assets...</div>
-  </div>
+// ════════════════════════════════════════════════════════════
+// SCENE, CAMERA, RENDERER
+// ════════════════════════════════════════════════════════════
+const scene = new THREE.Scene()
+scene.background = new THREE.Color(0x88bbee)
+scene.fog = new THREE.Fog(0x88bbee, 60, 150)
 
-  <div id="hud">
-    <div class="dash">
-      <div class="speed-row">
-        <span class="speed-val" id="hud-speed">0</span>
-        <span class="speed-unit">km/h</span>
-      </div>
-      <div class="gear-row">
-        <span class="gear" id="hud-gear">N</span>
-        <div class="rpm-bar"><div class="rpm-fill" id="hud-rpm" style="width:0%;background:#0f0"></div></div>
-      </div>
-      <div class="vehicle-name" id="hud-vehicle">—</div>
-      <span class="mode-badge" id="hud-mode">HUB</span>
-      <div class="coin-row"><span class="coin-icon">&#x1FA99;</span> <span id="hud-coins">0</span></div>
-      <div class="boost-bar"><div class="boost-fill" id="hud-boost"></div></div>
-    </div>
-  </div>
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 300)
+camera.position.set(0, 12, 15)
 
-  <div id="controls-manual">
-    <span class="key">W/S</span> or <span class="key">&#x2191;&#x2193;</span> Accelerate / Brake<br>
-    <span class="key">A/D</span> or <span class="key">&#x2190;&#x2192;</span> Steer<br>
-    <span class="key">SPACE</span> Boost<br>
-    <span class="key">SHIFT</span> Handbrake<br>
-    <span class="key">R</span> Reset car<br>
-    <span class="key">C</span> Camera<br>
-    <span class="key">G</span> Garage<br>
-    <span class="key">ESC</span> Options<br>
-    <span style="color:#555">Xbox: RT/LT&nbsp; A=Boost&nbsp; Start=Menu</span>
-  </div>
+const renderer = new THREE.WebGLRenderer({ antialias: true })
+renderer.setSize(innerWidth, innerHeight)
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+renderer.shadowMap.enabled = true
+renderer.shadowMap.type = THREE.PCFSoftShadowMap
+renderer.toneMapping = THREE.ACESFilmicToneMapping
+renderer.toneMappingExposure = 1.1
+document.body.appendChild(renderer.domElement)
 
-  <div id="powerup-toast"></div>
-  <div id="milestone-banner"><div class="title"></div><div class="sub"></div></div>
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight
+  camera.updateProjectionMatrix()
+  renderer.setSize(innerWidth, innerHeight)
+})
 
-  <div id="portal-prompt"></div>
-  <div id="race-hud">
-    <div class="position" id="race-pos">—</div>
-    <div class="lap" id="race-lap">Lap 1/3</div>
-    <div class="time" id="race-time">0:00.0</div>
-  </div>
+// ════════════════════════════════════════════════════════════
+// LIGHTS
+// ════════════════════════════════════════════════════════════
+scene.add(new THREE.HemisphereLight(0x88bbee, 0x445500, 0.8))
+const sun = new THREE.DirectionalLight(0xffffff, 1.5)
+sun.position.set(30, 50, 20)
+sun.castShadow = true
+sun.shadow.camera.left = -50; sun.shadow.camera.right = 50
+sun.shadow.camera.top = 50; sun.shadow.camera.bottom = -50
+sun.shadow.camera.far = 120
+sun.shadow.mapSize.set(2048, 2048)
+scene.add(sun)
 
-  <div id="garage-ui">
-    <button class="back-btn" id="garage-back">← Back to Hub</button>
-    <div class="title">GARAGE</div>
-    <div class="car-list" id="garage-list"></div>
-    <button class="drive-btn" id="garage-drive">DRIVE</button>
-  </div>
+// ════════════════════════════════════════════════════════════
+// PHYSICS WORLD
+// ════════════════════════════════════════════════════════════
+const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -15, 0) })
+world.broadphase = new CANNON.SAPBroadphase(world)
+world.defaultContactMaterial.friction = 0.3
+world.defaultContactMaterial.restitution = 0.2
 
-  <div id="offmap-timer">
-    <div class="label">OUT OF BOUNDS</div>
-    <div class="count" id="offmap-count">3</div>
-    <div class="label">Respawning...</div>
-  </div>
+const groundMat = new CANNON.Material('ground')
+const carMat = new CANNON.Material('car')
+world.addContactMaterial(new CANNON.ContactMaterial(groundMat, carMat, {
+  friction: 0.7, restitution: 0.1
+}))
 
-  <div id="options-menu">
-    <div class="panel">
-      <h2>OPTIONS</h2>
-      <div class="opt-row">
-        <span class="opt-label">Sound</span>
-        <button class="opt-btn" id="opt-sound">OFF</button>
-      </div>
-      <div class="opt-row">
-        <span class="opt-label">Creatures</span>
-        <button class="opt-btn" id="opt-creatures">OFF</button>
-      </div>
-      <div class="opt-row" style="flex-direction:column; align-items:flex-start; gap:8px;">
-        <span class="opt-label">Geography</span>
-        <div class="geo-group">
-          <button class="geo-btn" data-geo="dubai">Dubai</button>
-          <button class="geo-btn" data-geo="miami">Miami</button>
-          <button class="geo-btn" data-geo="tokyo">Tokyo</button>
-          <button class="geo-btn" data-geo="tuscany">Tuscany</button>
-          <button class="geo-btn" data-geo="vancouver">Vancouver</button>
-        </div>
-      </div>
-      <button class="resume-btn" id="opt-resume">RESUME</button>
-      <br>
-      <button class="restart-btn" id="opt-restart">RESTART GAME</button>
-    </div>
-  </div>
+// ════════════════════════════════════════════════════════════
+// GROUND
+// ════════════════════════════════════════════════════════════
+const floorGeo = new THREE.PlaneGeometry(200, 200)
+const floorMat = new THREE.MeshStandardMaterial({ color: 0x559944, roughness: 0.9 })
+const floor = new THREE.Mesh(floorGeo, floorMat)
+floor.rotation.x = -Math.PI / 2
+floor.receiveShadow = true
+scene.add(floor)
 
-  <div id="fade"></div>
+const floorBody = new CANNON.Body({
+  type: CANNON.Body.STATIC,
+  shape: new CANNON.Plane(),
+  material: groundMat,
+})
+floorBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0)
+world.addBody(floorBody)
 
-  <script type="module" src="/src/main.js"></script>
+// ════════════════════════════════════════════════════════════
+// CAR — Simple box chassis with 4 sphere wheels via constraints
+// Using a single box body + velocity-based driving (no RaycastVehicle)
+// ════════════════════════════════════════════════════════════
+const carW = 1.2, carH = 0.5, carL = 2.2
+
+// Physics body
+const carBody = new CANNON.Body({
+  mass: 80,
+  shape: new CANNON.Box(new CANNON.Vec3(carW/2, carH/2, carL/2)),
+  material: carMat,
+  linearDamping: 0.3,
+  angularDamping: 0.85,
+})
+carBody.position.set(0, 2, 0)
+world.addBody(carBody)
+
+// Visual — WRX STI styled
+const carGroup = new THREE.Group()
+scene.add(carGroup)
+
+// Body shell (rally blue)
+const bodyMesh = new THREE.Mesh(
+  new THREE.BoxGeometry(carW, carH, carL),
+  new THREE.MeshStandardMaterial({ color: 0x003399, roughness: 0.3, metalness: 0.6 })
+)
+bodyMesh.castShadow = true
+carGroup.add(bodyMesh)
+
+// Cabin
+const cabinMesh = new THREE.Mesh(
+  new THREE.BoxGeometry(carW * 0.8, carH * 0.65, carL * 0.45),
+  new THREE.MeshStandardMaterial({ color: 0x003399, roughness: 0.3, metalness: 0.5 })
+)
+cabinMesh.position.y = carH * 0.55
+cabinMesh.position.z = carL * 0.03
+cabinMesh.castShadow = true
+carGroup.add(cabinMesh)
+
+// Windshield
+const glassMat = new THREE.MeshStandardMaterial({ color: 0x88bbdd, transparent: true, opacity: 0.5, roughness: 0.1, metalness: 0.8 })
+const wsMesh = new THREE.Mesh(new THREE.BoxGeometry(carW * 0.75, carH * 0.5, 0.05), glassMat)
+wsMesh.position.set(0, carH * 0.5, -carL * 0.19)
+wsMesh.rotation.x = -0.3
+carGroup.add(wsMesh)
+
+// Rear window
+const rwMesh = new THREE.Mesh(new THREE.BoxGeometry(carW * 0.75, carH * 0.5, 0.05), glassMat)
+rwMesh.position.set(0, carH * 0.5, carL * 0.24)
+rwMesh.rotation.x = 0.3
+carGroup.add(rwMesh)
+
+// Hood scoop
+const scoopMesh = new THREE.Mesh(
+  new THREE.BoxGeometry(carW * 0.25, carH * 0.18, carL * 0.12),
+  new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 })
+)
+scoopMesh.position.set(0, carH * 0.38, -carL * 0.22)
+carGroup.add(scoopMesh)
+
+// Rear wing
+const wingMat = new THREE.MeshStandardMaterial({ color: 0x003399, roughness: 0.3, metalness: 0.5 })
+const wing = new THREE.Mesh(new THREE.BoxGeometry(carW * 1.05, 0.04, 0.25), wingMat)
+wing.position.set(0, carH * 0.9, carL * 0.42)
+carGroup.add(wing)
+for (const s of [-1, 1]) {
+  const post = new THREE.Mesh(new THREE.BoxGeometry(0.05, carH * 0.4, 0.05), new THREE.MeshStandardMaterial({ color: 0x222222 }))
+  post.position.set(s * carW * 0.35, carH * 0.68, carL * 0.42)
+  carGroup.add(post)
+}
+
+// Headlights
+const hlMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffcc, emissiveIntensity: 2 })
+for (const s of [-1, 1]) {
+  const hl = new THREE.Mesh(new THREE.BoxGeometry(carW * 0.2, carH * 0.15, 0.06), hlMat)
+  hl.position.set(s * carW * 0.35, 0, -carL * 0.5)
+  carGroup.add(hl)
+}
+
+// Taillights
+const tlMat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 1.5 })
+for (const s of [-1, 1]) {
+  const tl = new THREE.Mesh(new THREE.BoxGeometry(carW * 0.18, carH * 0.12, 0.05), tlMat)
+  tl.position.set(s * carW * 0.35, 0, carL * 0.5)
+  carGroup.add(tl)
+}
+
+// Wheels (visual only — physics is the box sliding)
+const wheelGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 12)
+wheelGeo.rotateZ(Math.PI / 2)
+const wheelMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.9 })
+const rimMat = new THREE.MeshStandardMaterial({ color: 0xdaa520, roughness: 0.2, metalness: 0.8 })
+
+const wheels = []
+const wheelPositions = [
+  [-carW/2 - 0.1, -carH/2 + 0.05, -carL * 0.32],
+  [ carW/2 + 0.1, -carH/2 + 0.05, -carL * 0.32],
+  [-carW/2 - 0.1, -carH/2 + 0.05,  carL * 0.32],
+  [ carW/2 + 0.1, -carH/2 + 0.05,  carL * 0.32],
+]
+for (const [wx, wy, wz] of wheelPositions) {
+  const wg = new THREE.Group()
+  wg.add(new THREE.Mesh(wheelGeo, wheelMat))
+  const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.15, 8), rimMat)
+  rim.rotation.z = Math.PI / 2
+  wg.add(rim)
+  wg.position.set(wx, wy, wz)
+  carGroup.add(wg)
+  wheels.push(wg)
+}
+
+// ════════════════════════════════════════════════════════════
+// WORLD OBJECTS — interactive physics props
+// ════════════════════════════════════════════════════════════
+const syncList = [] // { body, mesh }
+
+function addBox(x, y, z, w, h, d, color, mass) {
+  const geo = new THREE.BoxGeometry(w, h, d)
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.6 })
+  const mesh = new THREE.Mesh(geo, mat)
+  mesh.castShadow = true
+  mesh.receiveShadow = true
+  scene.add(mesh)
+  const body = new CANNON.Body({ mass, shape: new CANNON.Box(new CANNON.Vec3(w/2, h/2, d/2)) })
+  body.position.set(x, y, z)
+  world.addBody(body)
+  syncList.push({ body, mesh })
+  return { body, mesh }
+}
+
+function addCylinder(x, y, z, r, h, color, mass) {
+  const geo = new THREE.CylinderGeometry(r, r, h, 12)
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.6 })
+  const mesh = new THREE.Mesh(geo, mat)
+  mesh.castShadow = true
+  scene.add(mesh)
+  const body = new CANNON.Body({ mass, shape: new CANNON.Cylinder(r, r, h, 12) })
+  body.position.set(x, y, z)
+  world.addBody(body)
+  syncList.push({ body, mesh })
+}
+
+function addSphere(x, y, z, r, color, mass) {
+  const geo = new THREE.SphereGeometry(r, 16, 16)
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.5 })
+  const mesh = new THREE.Mesh(geo, mat)
+  mesh.castShadow = true
+  scene.add(mesh)
+  const body = new CANNON.Body({ mass, shape: new CANNON.Sphere(r) })
+  body.position.set(x, y, z)
+  world.addBody(body)
+  syncList.push({ body, mesh })
+}
+
+// ── 3D Title "GRAND THEFT OTTO" floating sign ──
+const titleCanvas = document.createElement('canvas')
+titleCanvas.width = 1024; titleCanvas.height = 256
+const tctx = titleCanvas.getContext('2d')
+tctx.fillStyle = '#ffd700'
+tctx.font = 'bold 90px Impact, sans-serif'
+tctx.textAlign = 'center'
+tctx.textBaseline = 'middle'
+tctx.strokeStyle = '#000'
+tctx.lineWidth = 4
+tctx.strokeText('GRAND THEFT OTTO', 512, 110)
+tctx.fillText('GRAND THEFT OTTO', 512, 110)
+tctx.fillStyle = '#fff'
+tctx.font = '28px sans-serif'
+tctx.fillText('PRESS  W  TO  DRIVE', 512, 200)
+const titleTex = new THREE.CanvasTexture(titleCanvas)
+const titleMesh = new THREE.Mesh(
+  new THREE.PlaneGeometry(18, 4.5),
+  new THREE.MeshBasicMaterial({ map: titleTex, transparent: true, side: THREE.DoubleSide })
+)
+titleMesh.position.set(0, 6, -12)
+scene.add(titleMesh)
+
+// ── Ramps ──
+function addRamp(x, z, ry) {
+  const geo = new THREE.BoxGeometry(4, 0.3, 5)
+  const mat = new THREE.MeshStandardMaterial({ color: 0xdaa520, roughness: 0.6 })
+  const mesh = new THREE.Mesh(geo, mat)
+  mesh.castShadow = true
+  scene.add(mesh)
+  const body = new CANNON.Body({
+    type: CANNON.Body.STATIC,
+    shape: new CANNON.Box(new CANNON.Vec3(2, 0.15, 2.5)),
+    material: groundMat,
+  })
+  body.position.set(x, 0.8, z)
+  body.quaternion.setFromEuler(-0.2, ry, 0)
+  mesh.position.copy(body.position)
+  mesh.quaternion.copy(body.quaternion)
+  world.addBody(body)
+}
+addRamp(12, 8, 0)
+addRamp(-15, 12, 0.5)
+addRamp(8, -18, -0.3)
+addRamp(-12, -8, 1.2)
+
+// ── Cones ──
+for (let i = 0; i < 25; i++) {
+  const x = (Math.random() - 0.5) * 70
+  const z = (Math.random() - 0.5) * 70
+  if (Math.abs(x) < 5 && Math.abs(z) < 5) continue
+  addCylinder(x, 0.4, z, 0.2, 0.8, 0xff6600, 1)
+}
+
+// ── Crates ──
+for (let i = 0; i < 15; i++) {
+  const x = (Math.random() - 0.5) * 60
+  const z = (Math.random() - 0.5) * 60
+  if (Math.abs(x) < 5 && Math.abs(z) < 5) continue
+  addBox(x, 0.5, z, 1, 1, 1, 0x8b6914, 3)
+}
+
+// ── Bowling pins ──
+for (let row = 0; row < 4; row++) {
+  for (let col = 0; col <= row; col++) {
+    addCylinder(-25 + col - row * 0.5, 0.4, 15 + row, 0.12, 0.7, 0xffffff, 0.3)
+  }
+}
+
+// ── Big bouncy balls ──
+addSphere(20, 2, -10, 1.5, 0xff4444, 5)
+addSphere(-20, 2, -15, 1.2, 0x44aaff, 4)
+addSphere(15, 2, 20, 1.8, 0xffcc00, 6)
+
+// ── Domino chain ──
+for (let i = 0; i < 12; i++) {
+  addBox(-10 + i * 1.5, 1.5, -25, 0.3, 3, 1.2, 0x4444aa, 2)
+}
+
+// ── Portal rings (static decorations) ──
+const portalColors = [0x2196f3, 0xff6600, 0xff0044]
+const portalNames = ['GARAGE', 'EXPLORE', 'RACE']
+const portalPositions = [[-25, 0], [0, -30], [25, 0]]
+for (let i = 0; i < 3; i++) {
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(3, 0.15, 12, 48),
+    new THREE.MeshStandardMaterial({ color: portalColors[i], emissive: portalColors[i], emissiveIntensity: 2 })
+  )
+  ring.position.set(portalPositions[i][0], 0.1, portalPositions[i][1])
+  ring.rotation.x = -Math.PI / 2
+  scene.add(ring)
+
+  const disc = new THREE.Mesh(
+    new THREE.CircleGeometry(3, 32),
+    new THREE.MeshStandardMaterial({ color: portalColors[i], transparent: true, opacity: 0.15 })
+  )
+  disc.position.set(portalPositions[i][0], 0.02, portalPositions[i][1])
+  disc.rotation.x = -Math.PI / 2
+  scene.add(disc)
+
+  // Label
+  const lc = document.createElement('canvas')
+  lc.width = 256; lc.height = 64
+  const lctx = lc.getContext('2d')
+  lctx.fillStyle = '#fff'
+  lctx.font = 'bold 36px monospace'
+  lctx.textAlign = 'center'
+  lctx.fillText(portalNames[i], 128, 44)
+  const label = new THREE.Mesh(
+    new THREE.PlaneGeometry(4, 1),
+    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(lc), transparent: true, side: THREE.DoubleSide })
+  )
+  label.position.set(portalPositions[i][0], 4, portalPositions[i][1])
+  scene.add(label)
+}
+
+// ── Trees ──
+for (let i = 0; i < 40; i++) {
+  const x = (Math.random() - 0.5) * 160
+  const z = (Math.random() - 0.5) * 160
+  if (Math.abs(x) < 8 && Math.abs(z) < 8) continue
+  const trunkH = 1.5 + Math.random()
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.12, 0.16, trunkH, 6),
+    new THREE.MeshStandardMaterial({ color: 0x6b3a1a, roughness: 0.9 })
+  )
+  trunk.position.set(x, trunkH / 2, z)
+  trunk.castShadow = true
+  scene.add(trunk)
+  const canopy = new THREE.Mesh(
+    new THREE.SphereGeometry(0.8 + Math.random() * 0.5, 6, 5),
+    new THREE.MeshStandardMaterial({ color: 0x2d5a1e, roughness: 0.8, flatShading: true })
+  )
+  canopy.position.set(x, trunkH + 0.3, z)
+  canopy.castShadow = true
+  scene.add(canopy)
+}
+
+// ════════════════════════════════════════════════════════════
+// INPUT
+// ════════════════════════════════════════════════════════════
+const keys = {}
+window.addEventListener('keydown', e => { keys[e.code] = true })
+window.addEventListener('keyup', e => { keys[e.code] = false })
+
+// ════════════════════════════════════════════════════════════
+// CAR DRIVING — direct velocity control (no RaycastVehicle)
+// ════════════════════════════════════════════════════════════
+const maxSpeed = 30
+const accel = 20
+const brakeForce = 15
+const turnSpeed = 2.5
+const boostMult = 2.5
+let carSpeed = 0
+let carAngle = 0
+
+function updateCar(dt) {
+  // Get car's up vector — if flipped, R resets
+  const up = new CANNON.Vec3(0, 1, 0)
+  carBody.quaternion.vmult(up, up)
+
+  if (keys['KeyR']) {
+    carBody.position.set(carBody.position.x, 2, carBody.position.z)
+    carBody.quaternion.setFromEuler(0, carAngle, 0)
+    carBody.velocity.setZero()
+    carBody.angularVelocity.setZero()
+    carSpeed = 0
+    return
+  }
+
+  // Only drive if car is roughly upright
+  if (up.y < 0.5) return
+
+  // Throttle
+  const fwd = (keys['ArrowUp'] || keys['KeyW']) ? 1 : 0
+  const rev = (keys['ArrowDown'] || keys['KeyS']) ? 1 : 0
+  const throttle = fwd - rev
+  const boosting = keys['Space']
+
+  const effectiveAccel = boosting ? accel * boostMult : accel
+  const effectiveMax = boosting ? maxSpeed * 1.8 : maxSpeed
+
+  if (throttle > 0) {
+    carSpeed = Math.min(carSpeed + effectiveAccel * dt, effectiveMax)
+  } else if (throttle < 0) {
+    carSpeed = Math.max(carSpeed - brakeForce * dt, -effectiveMax * 0.4)
+  } else {
+    // Coast to stop
+    carSpeed *= (1 - 2 * dt)
+    if (Math.abs(carSpeed) < 0.1) carSpeed = 0
+  }
+
+  // Steering
+  const left = (keys['ArrowLeft'] || keys['KeyA']) ? 1 : 0
+  const right = (keys['ArrowRight'] || keys['KeyD']) ? 1 : 0
+  const steer = left - right
+
+  if (Math.abs(carSpeed) > 0.5) {
+    const turnFactor = Math.min(1, Math.abs(carSpeed) / 8) // less turn at low speed
+    carAngle += steer * turnSpeed * turnFactor * dt * Math.sign(carSpeed)
+  }
+
+  // Apply to physics body
+  carBody.quaternion.setFromEuler(0, carAngle, 0)
+  const forward = new CANNON.Vec3(
+    -Math.sin(carAngle) * carSpeed,
+    carBody.velocity.y, // preserve gravity
+    -Math.cos(carAngle) * carSpeed
+  )
+  carBody.velocity.set(forward.x, forward.y, forward.z)
+
+  // Keep car from tipping — force upright orientation
+  carBody.angularVelocity.x *= 0.8
+  carBody.angularVelocity.z *= 0.8
+
+  // Gamepad support
+  const gp = navigator.getGamepads?.()[0]
+  if (gp) {
+    const stickX = Math.abs(gp.axes[0]) > 0.15 ? gp.axes[0] : 0
+    const rt = gp.buttons[7]?.value || 0
+    const lt = gp.buttons[6]?.value || 0
+    if (rt > 0.05 || lt > 0.05) {
+      const gpThrottle = rt - lt
+      const gpAccel = (gp.buttons[0]?.pressed) ? accel * boostMult : accel
+      const gpMax = (gp.buttons[0]?.pressed) ? maxSpeed * 1.8 : maxSpeed
+      if (gpThrottle > 0) carSpeed = Math.min(carSpeed + gpAccel * dt, gpMax)
+      else carSpeed = Math.max(carSpeed - brakeForce * dt, -gpMax * 0.4)
+    }
+    if (Math.abs(stickX) > 0 && Math.abs(carSpeed) > 0.5) {
+      carAngle -= stickX * turnSpeed * Math.min(1, Math.abs(carSpeed)/8) * dt * Math.sign(carSpeed)
+    }
+    if (gp.buttons[1]?.pressed) { // B = reset
+      carBody.position.y = 2
+      carBody.quaternion.setFromEuler(0, carAngle, 0)
+      carBody.velocity.setZero()
+      carBody.angularVelocity.setZero()
+      carSpeed = 0
+    }
+  }
+
+  // HUD
+  document.getElementById('spd').textContent = Math.floor(Math.abs(carSpeed) * 3.6) + ' km/h'
+}
+
+// ════════════════════════════════════════════════════════════
+// CAMERA — chase cam
+// ════════════════════════════════════════════════════════════
+const camTarget = new THREE.Vector3()
+const camPos = new THREE.Vector3(0, 12, 15)
+
+function updateCamera(dt) {
+  const p = carBody.position
+  const back = new THREE.Vector3(Math.sin(carAngle), 0, Math.cos(carAngle))
+  const dist = 10 + Math.abs(carSpeed) * 0.15
+  const height = 6 + Math.abs(carSpeed) * 0.08
+
+  const ideal = new THREE.Vector3(p.x + back.x * dist, p.y + height, p.z + back.z * dist)
+  camPos.lerp(ideal, 1 - Math.pow(0.02, dt))
+  camera.position.copy(camPos)
+
+  camTarget.lerp(new THREE.Vector3(p.x, p.y + 1, p.z), 1 - Math.pow(0.01, dt))
+  camera.lookAt(camTarget)
+}
+
+// ════════════════════════════════════════════════════════════
+// TITLE BILLBOARD
+// ════════════════════════════════════════════════════════════
+function updateTitle() {
+  if (!titleMesh.parent) return
+  titleMesh.lookAt(camera.position)
+  const dist = new THREE.Vector3().copy(carBody.position).length()
+  titleMesh.material.opacity = Math.max(0, 1 - dist / 25)
+  if (titleMesh.material.opacity <= 0) scene.remove(titleMesh)
+}
+
+// ════════════════════════════════════════════════════════════
+// OFF-MAP CHECK
+// ════════════════════════════════════════════════════════════
+function checkBounds() {
+  const p = carBody.position
+  if (Math.abs(p.x) > 95 || Math.abs(p.z) > 95 || p.y < -5) {
+    carBody.position.set(0, 2, 0)
+    carBody.velocity.setZero()
+    carBody.angularVelocity.setZero()
+    carAngle = 0
+    carSpeed = 0
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// GAME LOOP
+// ════════════════════════════════════════════════════════════
+let lastTime = performance.now()
+
+function loop() {
+  requestAnimationFrame(loop)
+  const now = performance.now()
+  const dt = Math.min((now - lastTime) / 1000, 0.05)
+  lastTime = now
+
+  updateCar(dt)
+  world.step(1/60, dt, 3)
+
+  // Sync visual objects to physics
+  carGroup.position.copy(carBody.position)
+  carGroup.quaternion.copy(carBody.quaternion)
+
+  // Spin wheels based on speed
+  const wheelSpin = carSpeed * dt * 3
+  for (const w of wheels) {
+    w.children[0].rotation.x += wheelSpin
+    w.children[1].rotation.x += wheelSpin
+  }
+
+  for (const { body, mesh } of syncList) {
+    mesh.position.copy(body.position)
+    mesh.quaternion.copy(body.quaternion)
+  }
+
+  updateCamera(dt)
+  updateTitle()
+  checkBounds()
+  renderer.render(scene, camera)
+}
+
+// Start
+setTimeout(() => {
+  document.getElementById('loading').classList.add('done')
+}, 300)
+loop()
+</script>
 </body>
 </html>
