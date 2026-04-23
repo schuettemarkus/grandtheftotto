@@ -2099,8 +2099,8 @@ function updateCamera(dt) {
   if (onPlanet >= 0) {
     const pd = planetData[onPlanet]
     const surfUp = new THREE.Vector3().subVectors(p, pd.pos).normalize()
-    // Get car forward from quaternion
-    const carFwd = new THREE.Vector3(0, 0, 1).applyQuaternion(carGroup.quaternion)
+    // Get car forward from quaternion (car drives toward -Z locally)
+    const carFwd = new THREE.Vector3(0, 0, -1).applyQuaternion(carGroup.quaternion)
     const behind = carFwd.clone().negate()
     // Tight camera — close and low for racetrack illusion
     const planDist = 10 + Math.abs(carSpeed) * 0.08
